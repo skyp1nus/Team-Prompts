@@ -6,6 +6,11 @@ using TeamPrompts.Domain.Entities;
 
 namespace TeamPrompts.Application.Services;
 
+/// <summary>Outcome of checking the configured default model id against OpenRouter's live /models list.</summary>
+public enum ModelValidationStatus { NoKey, Found, NotFound, Error }
+
+public sealed record ModelValidationResult(ModelValidationStatus Status, string Model, string? Detail);
+
 public interface ISettingsService
 {
     Task<SettingsDto> GetAsync(CancellationToken ct = default);
@@ -13,6 +18,10 @@ public interface ISettingsService
     Task SetDefaultModelAsync(string model, CancellationToken ct = default);
     Task<IReadOnlyList<ModelDto>> RefreshModelsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<ModelDto>> GetModelsAsync(CancellationToken ct = default);
+
+    /// <summary>Checks the configured default model id against OpenRouter's /models. Never throws:
+    /// returns NoKey when no key is set (no network call), Error when the lookup fails.</summary>
+    Task<ModelValidationResult> ValidateDefaultModelAsync(CancellationToken ct = default);
 }
 
 public sealed class SettingsService(
@@ -55,6 +64,26 @@ public sealed class SettingsService(
     {
         var s = await GetRowAsync(ct);
         return ParseModels(s.AvailableModels);
+    }
+
+    public async Task<ModelValidationResult> ValidateDefaultModelAsync(CancellationToken ct = default)
+    {
+        var s = await GetRowAsync(ct);
+        if (string.IsNullOrEmpty(s.OpenRouterApiKeyEncrypted))
+            return new ModelValidationResult(ModelValidationStatus.NoKey, s.DefaultModel, null);
+
+        try
+        {
+            var models = await openRouter.ListModelsAsync(ct);
+            var found = models.Any(m => string.Equals(m.Id, s.DefaultModel, StringComparison.OrdinalIgnoreCase));
+            return found
+                ? new ModelValidationResult(ModelValidationStatus.Found, s.DefaultModel, null)
+                : new ModelValidationResult(ModelValidationStatus.NotFound, s.DefaultModel, $"{models.Count} models listed");
+        }
+        catch (Exception ex)
+        {
+            return new ModelValidationResult(ModelValidationStatus.Error, s.DefaultModel, ex.Message);
+        }
     }
 
     private async Task<AppSettings> GetRowAsync(CancellationToken ct)

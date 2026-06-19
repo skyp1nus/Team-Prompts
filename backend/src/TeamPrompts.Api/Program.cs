@@ -10,6 +10,7 @@ using TeamPrompts.Api.Auth;
 using TeamPrompts.Api.Common;
 using TeamPrompts.Api.Jobs;
 using TeamPrompts.Api.Realtime;
+using TeamPrompts.Api.Startup;
 using TeamPrompts.Application;
 using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Infrastructure;
@@ -74,6 +75,9 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IGenerationNotifier, SignalRGenerationNotifier>();
 builder.Services.AddSingleton<IJobScheduler, HangfireJobScheduler>();
 builder.Services.AddTransient<GenerationJob>();
+
+// Startup check: warn (don't crash) if the configured default model isn't in OpenRouter's /models.
+builder.Services.AddHostedService<ModelValidationHostedService>();
 
 // ---- SignalR (string enums on the wire) ----
 builder.Services.AddSignalR()

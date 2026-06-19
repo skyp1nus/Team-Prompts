@@ -9,8 +9,13 @@ using TeamPrompts.Infrastructure.Persistence;
 namespace TeamPrompts.Infrastructure.OpenRouter;
 
 /// <summary>OpenAI-compatible client for OpenRouter. The API key is read+decrypted from AppSettings per call.</summary>
-public sealed class OpenRouterClient(HttpClient http, AppDbContext db, ISecretProtector protector) : IOpenRouterClient
+public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFactory, AppDbContext db, ISecretProtector protector) : IOpenRouterClient
 {
+    /// <summary>Named client used only for the long-lived streaming completion. It deliberately has
+    /// NO standard resilience handler: a total-request timeout or auto-retry would abort or replay a
+    /// partially-streamed completion mid-flight. Cancellation is driven by the caller's token.</summary>
+    public const string StreamClientName = "openrouter-stream";
+
     public async IAsyncEnumerable<string> StreamChatAsync(
         OpenRouterChatRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -30,16 +35,17 @@ public sealed class OpenRouterClient(HttpClient http, AppDbContext db, ISecretPr
         };
         msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        using var resp = await http.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
+        // Use the non-resilient streaming client so retries/total-timeout never sever the SSE stream.
+        var streamClient = httpFactory.CreateClient(StreamClientName);
+        using var resp = await streamClient.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureOkAsync(resp, ct);
 
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
-        while (!reader.EndOfStream)
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
         {
-            ct.ThrowIfCancellationRequested();
-            var line = await reader.ReadLineAsync(ct);
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:", StringComparison.Ordinal))
                 continue;
 

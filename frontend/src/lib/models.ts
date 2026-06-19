@@ -12,15 +12,16 @@ export function providerOf(id: string): string {
   return p ? p[0].toUpperCase() + p.slice(1) : "Other";
 }
 
-/** Matches the design's PROV_DOT palette. */
+/** Matches the design's PROV_DOT palette, mapped to the theme's --chart-* tokens so the
+ *  provider dots follow light/dark. xAI uses --muted-foreground (the design's neutral). */
 export const PROVIDER_DOT: Record<string, string> = {
-  OpenAI: "#2ea067",
-  Anthropic: "#c98a1a",
-  Google: "#2a7fd6",
-  Meta: "#7b5bd6",
-  Mistral: "#c43b54",
-  DeepSeek: "#2a7fd6",
-  xAI: "#52525b",
+  OpenAI: "var(--chart-2)",
+  Anthropic: "var(--chart-1)",
+  Google: "var(--chart-3)",
+  Meta: "var(--chart-5)",
+  Mistral: "var(--chart-4)",
+  DeepSeek: "var(--chart-3)",
+  xAI: "var(--muted-foreground)",
 };
 
 export function providerDot(id: string): string {
