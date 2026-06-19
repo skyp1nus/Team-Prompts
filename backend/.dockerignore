@@ -1,0 +1,17 @@
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/.idea
+**/*.user
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+**/TestResults
+**/node_modules
+.DS_Store
+Dockerfile
+.dockerignore

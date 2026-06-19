@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TeamPrompts.Api/TeamPrompts.Api.csproj" />
+    <Project Path="src/TeamPrompts.Application/TeamPrompts.Application.csproj" />
+    <Project Path="src/TeamPrompts.Domain/TeamPrompts.Domain.csproj" />
+    <Project Path="src/TeamPrompts.Infrastructure/TeamPrompts.Infrastructure.csproj" />
+  </Folder>
+</Solution>
