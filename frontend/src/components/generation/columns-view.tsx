@@ -6,7 +6,7 @@ import { ModelBadge } from "@/components/generation/model-badge";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import type { Group } from "@/components/generation/map-view";
 
-const DOTS = ["var(--primary)", "#2ea067", "#c98a1a", "#c43b54", "#2a7fd6", "#7b5bd6"];
+const DOTS = ["var(--primary)", "var(--chart-2)", "var(--chart-1)", "var(--chart-4)", "var(--chart-3)", "var(--chart-5)"];
 const VARIANTS = 5;
 
 function flatten(groups: Group[]): SessionWithResultsDto[] {

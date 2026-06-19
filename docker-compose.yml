@@ -35,7 +35,7 @@ services:
       Seed__AdminPassword: ${Seed__AdminPassword:-Admin123!}
       DataProtection__KeyRingPath: ${DataProtection__KeyRingPath:-/keys}
       OpenRouter__BaseUrl: ${OpenRouter__BaseUrl:-https://openrouter.ai/api/v1}
-      OpenRouter__ApiKey: ${OpenRouter__ApiKey:-}
+      # The OpenRouter API key is NOT an env var — it is set (write-only, encrypted) via the Settings UI.
       Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost}
     volumes:
       - dpkeys:/keys

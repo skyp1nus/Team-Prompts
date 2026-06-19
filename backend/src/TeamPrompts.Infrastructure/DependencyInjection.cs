@@ -28,18 +28,33 @@ public static class DependencyInjection
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
 
         var baseUrl = openRouterBaseUrl.EndsWith('/') ? openRouterBaseUrl : openRouterBaseUrl + "/";
-        services.AddHttpClient<IOpenRouterClient, OpenRouterClient>(c =>
+        void ConfigureClient(HttpClient c)
         {
             c.BaseAddress = new Uri(baseUrl);
             c.DefaultRequestHeaders.Add("X-Title", "Team Prompts");
-            c.Timeout = TimeSpan.FromMinutes(5);
+        }
+
+        // Resilient client for short, non-streaming calls (e.g. /models). Retry + circuit breaker +
+        // bounded timeouts are correct here. The streaming completion does NOT use this client.
+        services.AddHttpClient<IOpenRouterClient, OpenRouterClient>(c =>
+        {
+            ConfigureClient(c);
+            c.Timeout = TimeSpan.FromSeconds(100);
         })
         .AddStandardResilienceHandler(o =>
         {
-            // Generous timeouts so long token streams aren't cut; retry + circuit breaker for transient faults.
-            o.AttemptTimeout.Timeout = TimeSpan.FromMinutes(2);
-            o.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(5);
-            o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(4); // must be >= 2 × attempt timeout
+            o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+            o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+            o.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60); // must be >= 2 × attempt timeout
+        });
+
+        // Streaming client: NO standard resilience handler. A total-request timeout or auto-retry would
+        // abort or replay a partially-streamed completion. Cancellation flows through the caller's token;
+        // the infinite client timeout lets long generations run to completion.
+        services.AddHttpClient(OpenRouterClient.StreamClientName, c =>
+        {
+            ConfigureClient(c);
+            c.Timeout = Timeout.InfiniteTimeSpan;
         });
 
         return services;
