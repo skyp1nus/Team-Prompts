@@ -1,0 +1,50 @@
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+!.env.example
+!infra/.env.example
+
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+[Dd]ebug/
+[Rr]elease/
+.vs/
+TestResults/
+*.nupkg
+
+# --- Node / Next.js (frontend) ---
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Data Protection keys (mounted as a volume in containers) ---
+dpkeys/
+keys/
+
+# --- Serilog rolling files ---
+logs/
+*.log
+
+# --- Editors / OS ---
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Claude Code (personal, machine-local) ---
+.claude/settings.local.json
+
+# --- design reference scratch (canonical design dump from claude.ai/design) ---
+.design-ref/

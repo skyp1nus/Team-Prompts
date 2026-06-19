@@ -1,0 +1,35 @@
+# Team Prompts — single front door reverse proxy
+#
+# Routing:
+#   /api/*      -> api:8080   (REST + SignalR hub at /api/hubs/generation)
+#   /hangfire/* -> api:8080   (Hangfire dashboard)
+#   /*          -> web:3000   (Next.js)
+#
+# Notes:
+#   - `handle` (not `handle_path`) keeps the request path intact, so the
+#     /api and /hangfire prefixes are NOT stripped — the backend serves its
+#     routes under those prefixes.
+#   - reverse_proxy transparently forwards WebSocket upgrades (used by
+#     SignalR at /api/hubs/generation), so no extra config is required.
+#   - `localhost` enables Caddy's internal/local TLS on :443; `:80` serves
+#     plain HTTP. Both are published to the host in docker-compose.
+
+{
+	# Use Caddy's internal CA for local TLS (no public ACME).
+	local_certs
+}
+
+localhost, :80, :443 {
+	encode gzip
+
+	# Backend API + Hangfire dashboard.
+	@api path /api/* /hangfire/*
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	# Everything else -> Next.js frontend.
+	handle {
+		reverse_proxy web:3000
+	}
+}
