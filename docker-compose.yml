@@ -1,0 +1,86 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teamprompts}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teamprompts}
+      POSTGRES_DB: ${POSTGRES_DB:-teamprompts}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teamprompts} -d ${POSTGRES_DB:-teamprompts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: src/TeamPrompts.Api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${ConnectionStrings__Default:-Host=db;Port=5432;Database=teamprompts;Username=teamprompts;Password=teamprompts}
+      Seed__AdminEmail: ${Seed__AdminEmail:-admin@teamprompts.local}
+      Seed__AdminPassword: ${Seed__AdminPassword:-Admin123!}
+      DataProtection__KeyRingPath: ${DataProtection__KeyRingPath:-/keys}
+      OpenRouter__BaseUrl: ${OpenRouter__BaseUrl:-https://openrouter.ai/api/v1}
+      OpenRouter__ApiKey: ${OpenRouter__ApiKey:-}
+      Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost}
+    volumes:
+      - dpkeys:/keys
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the client bundle. Empty = same origin behind Caddy (paths already include /api).
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  dpkeys:
+  caddy_data:
+  caddy_config:
