@@ -1,0 +1,149 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { SlidersHorizontal, X } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useDeleteApiPromptsId, useGetApiPrompts } from "@/api/endpoints/prompts/prompts";
+import type { PromptListItemDto } from "@/api/model";
+import { CreatePromptDialog } from "@/components/prompts/create-prompt-dialog";
+import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import { invalidatePath } from "@/lib/query/invalidate";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
+
+export function PromptsPanel() {
+  const qc = useQueryClient();
+  const { data: prompts, isLoading } = useGetApiPrompts();
+  const { selectedPromptIds, togglePrompt } = useWorkspace();
+  const del = useDeleteApiPromptsId();
+  const [openPromptId, setOpenPromptId] = useState<string | null>(null);
+
+  const onDelete = (id: string, name: string) => {
+    if (!confirm(`Delete prompt "${name}"?`)) return;
+    del.mutate(
+      { id },
+      {
+        onSuccess: async () => {
+          await invalidatePath(qc, "/api/prompts");
+          toast.success("Prompt deleted");
+        },
+        onError: () => toast.error("Delete failed (it may be in use by past generations)"),
+      },
+    );
+  };
+
+  const n = selectedPromptIds.length;
+
+  return (
+    <aside className="flex h-full flex-col border-l border-border bg-background">
+      <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
+        <h2 className="eyebrow">Prompt Library</h2>
+        <CreatePromptDialog />
+      </div>
+      <div className="px-3.5 pb-2.5 text-[11px] text-faint">
+        {n === 0 ? "No prompts selected" : `${n} prompt${n === 1 ? "" : "s"} selected`}
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="px-2.5 pb-4">
+          {isLoading &&
+            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1 h-[54px] w-full" />)}
+          {!isLoading && (prompts?.length ?? 0) === 0 && (
+            <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
+              No prompts yet.
+              <br />
+              Create one to begin.
+            </p>
+          )}
+          {prompts?.map((p) => (
+            <PromptRow
+              key={p.id}
+              prompt={p}
+              selected={selectedPromptIds.includes(p.id)}
+              onToggle={() => togglePrompt(p.id)}
+              onOpen={() => setOpenPromptId(p.id)}
+              onDelete={() => onDelete(p.id, p.name)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+
+      <PromptDetailDialog
+        promptId={openPromptId}
+        open={openPromptId !== null}
+        onOpenChange={(o) => !o && setOpenPromptId(null)}
+      />
+    </aside>
+  );
+}
+
+function PromptRow({
+  prompt,
+  selected,
+  onToggle,
+  onOpen,
+  onDelete,
+}: {
+  prompt: PromptListItemDto;
+  selected: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const hasMain = !!prompt.mainVersionId;
+  return (
+    <div
+      onClick={onToggle}
+      className={cn(
+        "group relative mb-[3px] flex cursor-pointer items-start gap-2.5 rounded-lg p-2.5 transition-colors hover:bg-accent",
+        selected && "bg-primary/[0.07]",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
+          selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
+        )}
+      >
+        {selected && "✓"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-medium">{prompt.name}</span>
+          {hasMain && (
+            <span className="shrink-0 rounded-[5px] bg-primary/[0.08] px-1.5 py-px text-[9.5px] font-bold tracking-wide text-primary">
+              MAIN
+            </span>
+          )}
+        </div>
+        <div className="mt-[3px] text-[11px] text-faint">
+          {hasMain && "Main · "}
+          {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+        title="History & versions"
+      >
+        <SlidersHorizontal className="size-3.5" />
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+        title="Delete prompt"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+}
