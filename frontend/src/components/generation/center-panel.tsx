@@ -48,7 +48,12 @@ export function CenterPanel() {
   }, [activeScriptId, subscribeScript]);
 
   const scriptIds = batchScriptIds.length > 0 ? batchScriptIds : activeScriptId ? [activeScriptId] : [];
-  const canGenerate = scriptIds.length > 0 && selectedPromptIds.length > 0 && !generating;
+  const missing = [
+    scriptIds.length === 0 && "a script",
+    selectedPromptIds.length === 0 && "a prompt",
+    runModels.length === 0 && "a model",
+  ].filter(Boolean) as string[];
+  const canGenerate = missing.length === 0 && !generating;
 
   const groups = groupByPrompt(sessions ?? []);
   const hasResults = groups.length > 0;
@@ -100,6 +105,7 @@ export function CenterPanel() {
           <Button
             onClick={onGenerate}
             disabled={!canGenerate}
+            title={missing.length ? `Pick ${missing.join(", ")} first` : undefined}
             className="h-9 min-w-[132px] justify-center gap-1.5 rounded-md text-[13.5px]"
           >
             {generating ? (
@@ -161,15 +167,31 @@ function CenterEmpty({ title, body }: { title: string; body: string }) {
 }
 
 function groupByPrompt(sessions: SessionWithResultsDto[]): Group[] {
+  // Stable layout: positions are fixed by FIRST appearance (oldest-first), so re-generating a
+  // model just refreshes its card in place instead of shuffling prompts/models around. The API
+  // returns sessions newest-first, so we iterate oldest-first and let a newer run overwrite its
+  // existing (prompt, model) slot — same position, newest content.
+  const ordered = [...sessions].sort(
+    (a, b) => +new Date(a.session.createdAt) - +new Date(b.session.createdAt),
+  );
   const groups: Group[] = [];
-  const index = new Map<string, number>();
-  for (const s of sessions) {
+  const groupIndex = new Map<string, number>();
+  const modelSlot = new Map<string, number>(); // `${promptId}|${model}` -> index in group.sessions
+  for (const s of ordered) {
     const pid = s.session.promptId;
-    if (!index.has(pid)) {
-      index.set(pid, groups.length);
+    if (!groupIndex.has(pid)) {
+      groupIndex.set(pid, groups.length);
       groups.push({ promptId: pid, promptName: s.session.promptName, sessions: [] });
     }
-    groups[index.get(pid)!].sessions.push(s);
+    const g = groups[groupIndex.get(pid)!];
+    const key = `${pid}|${s.session.model}`;
+    const slot = modelSlot.get(key);
+    if (slot === undefined) {
+      modelSlot.set(key, g.sessions.length);
+      g.sessions.push(s);
+    } else {
+      g.sessions[slot] = s; // newer run for an existing model — keep its position
+    }
   }
   return groups;
 }
