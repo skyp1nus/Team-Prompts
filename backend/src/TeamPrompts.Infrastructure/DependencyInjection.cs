@@ -55,6 +55,13 @@ public static class DependencyInjection
         {
             ConfigureClient(c);
             c.Timeout = Timeout.InfiniteTimeSpan;
+        })
+        // Bound only the connect/TLS handshake — without this an unreachable host hangs the request
+        // forever. The response body is deliberately left uncapped here; StreamChatAsync applies a
+        // per-read idle timeout so a stalled stream is detected without severing a healthy long one.
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(20),
         });
 
         return services;
