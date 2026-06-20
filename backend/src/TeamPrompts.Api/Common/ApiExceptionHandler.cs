@@ -10,6 +10,15 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, I
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)
     {
+        // Client aborted the request (navigation, react-query cancelling a stale query) — not an
+        // error. Swallow without logging; the client is gone so there's nothing to write back.
+        if (ex is OperationCanceledException && ctx.RequestAborted.IsCancellationRequested)
+        {
+            if (!ctx.Response.HasStarted)
+                ctx.Response.StatusCode = 499; // client closed request
+            return true;
+        }
+
         var (status, title) = ex switch
         {
             NotFoundException => (StatusCodes.Status404NotFound, ex.Message),
