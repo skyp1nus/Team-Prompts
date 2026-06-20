@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Common;
@@ -8,12 +9,19 @@ using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Application.Services;
 
-/// <summary>Runs one session: streams N variants from OpenRouter, persists each, notifies clients live.</summary>
+/// <summary>
+/// Runs one session as a SINGLE OpenRouter completion that returns N distinct options. The raw
+/// text is streamed live, then split + cleaned (markdown/numbering stripped, de-duplicated) into
+/// N individual <see cref="GenerationResult"/> rows — one clean, pickable card each.
+/// </summary>
 public sealed class GenerationExecutor(
     IAppDbContext db,
     IOpenRouterClient openRouter,
     IGenerationNotifier notifier) : IGenerationExecutor
 {
+    private static readonly Regex ListMarker = new(@"^\s*(\d+[\.\)]|[-*•‣·])\s+", RegexOptions.Compiled);
+    private static readonly Regex ScriptToken = new(@"\{\{\s*script\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     public async Task ExecuteAsync(Guid sessionId, CancellationToken ct = default)
     {
         var session = await db.GenerationSessions
@@ -30,29 +38,33 @@ public sealed class GenerationExecutor(
             await db.SaveChangesAsync(ct);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Streaming), null, ct);
 
-            var messages = new List<OpenRouterMessage>
+            var n = GenerationDefaults.VariantCount;
+            var messages = BuildMessages(n, session.PromptVersion.Content, session.Script.ExtractedText);
+
+            // ONE completion. Stream the raw text live into the first slot so the user sees progress.
+            var sb = new StringBuilder();
+            var request = new OpenRouterChatRequest(session.Model, messages, GenerationDefaults.Temperature);
+            await foreach (var delta in openRouter.StreamChatAsync(request, ct))
             {
-                new("system", session.PromptVersion.Content),
-                new("user", $"Video script:\n\n{session.Script.ExtractedText}"),
-            };
+                sb.Append(delta);
+                await notifier.ResultDelta(scriptId, sessionId, 0, delta, ct);
+            }
 
-            for (var i = 0; i < GenerationDefaults.VariantCount; i++)
+            // Split the single response into N clean, de-duplicated options (one per card).
+            var options = SplitOptions(sb.ToString(), n);
+            if (options.Count == 0)
             {
-                ct.ThrowIfCancellationRequested();
+                var whole = sb.ToString().Trim();
+                if (whole.Length > 0) options.Add(whole); // fallback: never lose a non-empty response
+            }
 
-                var sb = new StringBuilder();
-                var request = new OpenRouterChatRequest(session.Model, messages, GenerationDefaults.Temperature);
-                await foreach (var delta in openRouter.StreamChatAsync(request, ct))
-                {
-                    sb.Append(delta);
-                    await notifier.ResultDelta(scriptId, sessionId, i, delta, ct);
-                }
-
+            for (var i = 0; i < options.Count; i++)
+            {
                 var result = new GenerationResult
                 {
                     SessionId = sessionId,
                     Index = i,
-                    Content = sb.ToString().Trim(),
+                    Content = options[i],
                     CreatedAt = DateTimeOffset.UtcNow,
                 };
                 db.GenerationResults.Add(result);
@@ -75,5 +87,59 @@ public sealed class GenerationExecutor(
             await db.SaveChangesAsync(CancellationToken.None);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Failed), ex.Message, CancellationToken.None);
         }
+    }
+
+    /// <summary>
+    /// Builds the chat messages. The script is supplied by the always-on system layer, so the
+    /// editable prompt is a pure brief. A power-user may still place it inline via a {{script}}
+    /// token — in that case it is substituted there and NOT duplicated into the system context.
+    /// </summary>
+    private static List<OpenRouterMessage> BuildMessages(int n, string promptContent, string script)
+    {
+        var prompt = promptContent ?? string.Empty;
+        script ??= string.Empty;
+
+        if (ScriptToken.IsMatch(prompt))
+        {
+            return
+            [
+                new("system", GenerationDefaults.SystemGuardrail(n)),
+                new("user", ScriptToken.Replace(prompt, script)),
+            ];
+        }
+
+        var brief = prompt.Trim().Length == 0 ? "Generate the options now." : prompt;
+        return
+        [
+            new("system", $"{GenerationDefaults.SystemGuardrail(n)}\n\n{GenerationDefaults.ScriptBlock(script)}"),
+            new("user", brief),
+        ];
+    }
+
+    /// <summary>Splits a completion into clean, plain-text, de-duplicated options (max <paramref name="max"/>).</summary>
+    private static List<string> SplitOptions(string raw, int max)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var output = new List<string>();
+        foreach (var line in raw.Replace("\r", string.Empty).Split('\n'))
+        {
+            var cleaned = CleanLine(line);
+            if (cleaned.Length == 0) continue;
+            if (!seen.Add(cleaned)) continue; // drop exact/case-insensitive repeats
+            output.Add(cleaned);
+            if (output.Count >= max) break;
+        }
+        return output;
+    }
+
+    /// <summary>Strips list markers, markdown emphasis and wrapping quotes from one line.</summary>
+    private static string CleanLine(string line)
+    {
+        var s = line.Trim();
+        if (s.Length == 0) return s;
+        s = ListMarker.Replace(s, string.Empty);
+        s = s.Replace("**", string.Empty).Replace("__", string.Empty).Replace("`", string.Empty);
+        s = s.Trim().Trim('"', '\'', '“', '”', '‘', '’').Trim();
+        return s;
     }
 }
