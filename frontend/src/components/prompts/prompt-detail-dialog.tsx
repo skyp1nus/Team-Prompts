@@ -64,7 +64,7 @@ export function PromptDetailDialog({ promptId, open, onOpenChange }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 p-0 sm:max-w-3xl">
+      <SheetContent className="w-full gap-0 p-0 data-[side=right]:w-[56vw] data-[side=right]:sm:max-w-4xl">
         {!prompt ? (
           <div className="p-6 text-sm text-muted-foreground">Loading…</div>
         ) : branchOf ? (
@@ -236,7 +236,7 @@ function DetailPanel({
                 FROM
               </span>
               <Select value={fromId ?? undefined} onValueChange={setFromId}>
-                <SelectTrigger size="sm" className="max-w-[260px]">
+                <SelectTrigger size="sm" className="w-[320px] max-w-full">
                   <SelectValue placeholder="From" />
                 </SelectTrigger>
                 <SelectContent>
@@ -255,7 +255,7 @@ function DetailPanel({
                 TO
               </span>
               <Select value={toId ?? undefined} onValueChange={setToId}>
-                <SelectTrigger size="sm" className="max-w-[260px]">
+                <SelectTrigger size="sm" className="w-[320px] max-w-full">
                   <SelectValue placeholder="To" />
                 </SelectTrigger>
                 <SelectContent>
@@ -269,7 +269,7 @@ function DetailPanel({
               </Select>
             </div>
           </div>
-          <div className="overflow-hidden rounded-[10px] border border-border bg-card text-[13px]">
+          <div className="max-w-full overflow-x-auto rounded-[10px] border border-border bg-card text-[13px] [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
             {fromV && toV ? (
               <ReactDiffViewer
                 oldValue={fromV.content}

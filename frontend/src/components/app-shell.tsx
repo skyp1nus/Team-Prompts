@@ -22,7 +22,6 @@ import {
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useAuth } from "@/lib/auth/auth-context";
 import { initials } from "@/lib/format";
-import { invalidatePath } from "@/lib/query/invalidate";
 
 export function AppShell() {
   const { user, isAdmin } = useAuth();
@@ -32,8 +31,10 @@ export function AppShell() {
 
   const onLogout = () =>
     logout.mutate(undefined, {
-      onSuccess: async () => {
-        await invalidatePath(qc, "/api/auth/me");
+      onSuccess: () => {
+        // Drop all cached data so `user` is undefined immediately — otherwise the stale
+        // /api/auth/me cache bounces us back from /login until a refetch/reload lands.
+        qc.clear();
         router.replace("/login");
       },
     });

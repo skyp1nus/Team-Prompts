@@ -72,46 +72,31 @@ export function SelectionTray() {
     toast.success(`Copied ${items.length} item${items.length === 1 ? "" : "s"}`);
   };
 
+  // Hidden entirely until at least one result is starred.
+  if (items.length === 0) return null;
+
   return (
     <div className="shrink-0 border-t border-border bg-background">
       <div className="flex items-center gap-3 px-5 pt-2.5">
         <h3 className="eyebrow">Selection Tray</h3>
-        <span
-          className={cn(
-            "rounded-md px-1.5 text-[11px] font-semibold tabular-nums",
-            items.length ? "bg-primary text-primary-foreground" : "bg-accent text-faint",
-          )}
-        >
+        <span className="rounded-md bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums">
           {items.length}
         </span>
         <div className="flex-1" />
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 rounded-lg"
-          onClick={copyAll}
-          disabled={items.length === 0}
-        >
+        <Button size="sm" variant="outline" className="h-7 gap-1.5 rounded-lg" onClick={copyAll}>
           <Copy className="size-3.5" /> Copy all
         </Button>
       </div>
       <div className="px-5 pt-2.5 pb-3">
-        {items.length === 0 ? (
-          <p className="py-1.5 text-[12.5px] text-faint">
-            Picked results collect here. Click a result&apos;s + to add it, then copy the titles &amp;
-            descriptions you&apos;ll use.
-          </p>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={order} strategy={horizontalListSortingStrategy}>
-              <div className="flex gap-2.5 overflow-x-auto pb-0.5">
-                {items.map((t) => (
-                  <TrayCard key={t.resultId} item={t} scriptId={activeScriptId!} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={order} strategy={horizontalListSortingStrategy}>
+            <div className="flex gap-2.5 overflow-x-auto pb-0.5">
+              {items.map((t) => (
+                <TrayCard key={t.resultId} item={t} scriptId={activeScriptId!} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
     </div>
   );
