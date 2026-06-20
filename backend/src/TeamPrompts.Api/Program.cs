@@ -67,7 +67,8 @@ builder.Services.ConfigureApplicationCookie(o =>
 });
 
 builder.Services.AddAuthorization(o =>
-    o.AddPolicy("Admin", p => p.RequireRole(AppRoles.Admin)));
+    // Owner is a superset of Admin: both pass the privileged "Admin" policy.
+    o.AddPolicy("Admin", p => p.RequireRole(AppRoles.Privileged)));
 
 // ---- App-specific services ----
 builder.Services.AddHttpContextAccessor();

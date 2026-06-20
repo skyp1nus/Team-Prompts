@@ -26,21 +26,30 @@ public static class DataSeeder
         }
 
         var userMgr = services.GetRequiredService<UserManager<AppUser>>();
-        if (!string.IsNullOrWhiteSpace(adminEmail) && await userMgr.FindByEmailAsync(adminEmail) is null)
+        if (!string.IsNullOrWhiteSpace(adminEmail))
         {
-            var admin = new AppUser
+            var admin = await userMgr.FindByEmailAsync(adminEmail);
+            if (admin is null)
             {
-                UserName = adminEmail,
-                Email = adminEmail,
-                EmailConfirmed = true,
-                DisplayName = "Administrator",
-            };
-            var result = await userMgr.CreateAsync(admin, adminPassword);
-            if (!result.Succeeded)
-                throw new InvalidOperationException(
-                    "Admin seed failed: " + string.Join(", ", result.Errors.Select(e => e.Description)));
+                admin = new AppUser
+                {
+                    UserName = adminEmail,
+                    Email = adminEmail,
+                    EmailConfirmed = true,
+                    DisplayName = "Administrator",
+                };
+                var result = await userMgr.CreateAsync(admin, adminPassword);
+                if (!result.Succeeded)
+                    throw new InvalidOperationException(
+                        "Admin seed failed: " + string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
 
-            await userMgr.AddToRoleAsync(admin, AppRoles.Admin);
+            // Bootstrap account is the single Admin. The Owner is created later BY the admin and is
+            // a singleton — so never auto-grant Owner here (strip it if a previous seed added it).
+            if (!await userMgr.IsInRoleAsync(admin, AppRoles.Admin))
+                await userMgr.AddToRoleAsync(admin, AppRoles.Admin);
+            if (await userMgr.IsInRoleAsync(admin, AppRoles.Owner))
+                await userMgr.RemoveFromRoleAsync(admin, AppRoles.Owner);
         }
 
         if (!await db.AppSettings.AnyAsync())

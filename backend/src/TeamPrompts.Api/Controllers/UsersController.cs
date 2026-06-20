@@ -18,6 +18,11 @@ public sealed class UsersController(UserManager<AppUser> userManager) : Controll
         if (await userManager.FindByEmailAsync(req.Email) is not null)
             return Conflict("A user with this email already exists.");
 
+        // Owner is a singleton — only one can ever exist.
+        if (string.Equals(req.Role, AppRoles.Owner, StringComparison.OrdinalIgnoreCase)
+            && (await userManager.GetUsersInRoleAsync(AppRoles.Owner)).Count > 0)
+            return Conflict("An owner already exists — there can be only one.");
+
         var user = new AppUser
         {
             UserName = req.Email,

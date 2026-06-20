@@ -9,6 +9,7 @@ public sealed class HangfireAdminAuthorizationFilter : IDashboardAuthorizationFi
     public bool Authorize(DashboardContext context)
     {
         var http = context.GetHttpContext();
-        return http.User.Identity?.IsAuthenticated == true && http.User.IsInRole(AppRoles.Admin);
+        return http.User.Identity?.IsAuthenticated == true
+            && AppRoles.Privileged.Any(http.User.IsInRole);
     }
 }

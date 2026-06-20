@@ -9,6 +9,9 @@ type AuthValue = {
   user: UserDto | undefined;
   isLoading: boolean;
   isAdmin: boolean;
+  isOwner: boolean;
+  /** Owner or Admin — may see/manage privileged settings (key, favorite models, users). */
+  isPrivileged: boolean;
   refetch: () => void;
 };
 
@@ -29,10 +32,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user && isPublic) router.replace("/");
   }, [user, isLoading, pathname, router]);
 
-  const isAdmin = !!user?.roles?.includes("Admin");
+  const roles = user?.roles ?? [];
+  const isOwner = roles.includes("Owner");
+  const isAdmin = roles.includes("Admin");
+  const isPrivileged = isOwner || isAdmin;
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAdmin, refetch }}>
+    <AuthContext.Provider value={{ user, isLoading, isAdmin, isOwner, isPrivileged, refetch }}>
       {children}
     </AuthContext.Provider>
   );
