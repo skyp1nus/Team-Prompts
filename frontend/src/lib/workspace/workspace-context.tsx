@@ -18,6 +18,8 @@ type WorkspaceValue = {
   batchScriptIds: string[];
   toggleBatchScript: (id: string) => void;
   clearBatch: () => void;
+  /** Drop any selected/active script id that no longer exists (e.g. after a delete). */
+  pruneScripts: (existingIds: string[]) => void;
 
   /** Models the next run fans out across (design model picker). Empty → use default. */
   runModels: string[];
@@ -52,6 +54,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
   const clearBatch = useCallback(() => setBatchScriptIds([]), []);
 
+  const pruneScripts = useCallback((existingIds: string[]) => {
+    const set = new Set(existingIds);
+    setBatchScriptIds((p) => (p.every((id) => set.has(id)) ? p : p.filter((id) => set.has(id))));
+    setActiveScriptId((a) => (a && !set.has(a) ? null : a));
+  }, []);
+
   const toggleRunModel = useCallback(
     (m: string) => setRunModels((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m])),
     [],
@@ -68,6 +76,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         batchScriptIds,
         toggleBatchScript,
         clearBatch,
+        pruneScripts,
         runModels,
         toggleRunModel,
         setRunModels,

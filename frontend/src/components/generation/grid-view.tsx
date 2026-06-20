@@ -1,9 +1,16 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { RotateCw } from "lucide-react";
+import { toast } from "sonner";
+import { usePostApiGenerationSessionsSessionIdRegenerate } from "@/api/endpoints/generation/generation";
 import { SessionStatus, type SessionWithResultsDto } from "@/api/model";
 import { ModelBadge } from "@/components/generation/model-badge";
 import { ResultCard } from "@/components/generation/result-card";
+import { Button } from "@/components/ui/button";
+import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
+import { cn } from "@/lib/utils";
 import type { Group } from "@/components/generation/map-view";
 
 const DOTS = ["var(--primary)", "var(--chart-2)", "var(--chart-1)", "var(--chart-4)", "var(--chart-3)", "var(--chart-5)"];
@@ -30,12 +37,28 @@ function SessionSection({
   dot: string;
 }) {
   const { live } = useGenerationStream();
+  const qc = useQueryClient();
+  const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const ls = live[item.session.id];
   const status = (ls?.status ?? item.session.status) as string;
   const streaming = status === SessionStatus.Streaming || status === SessionStatus.Queued;
+  const failed = status === SessionStatus.Failed;
+  const error = (ls?.error ?? item.session.error) ?? null;
+  const rateLimited = !!error && error.includes("429");
   const results = [...item.results].sort((a, b) => a.index - b.index);
   const liveCount = ls ? Object.keys(ls.deltas).length : 0;
   const total = streaming ? Math.max(VARIANTS, results.length, liveCount) : results.length;
+
+  const retry = () => {
+    regen.mutate(
+      { sessionId: item.session.id, data: { model: null } },
+      {
+        onSuccess: () => invalidatePath(qc, `/api/scripts/${scriptId}/sessions`),
+        onError: () => toast.error("Couldn’t retry"),
+      },
+    );
+    toast.success("Retrying…");
+  };
 
   return (
     <section className="mb-7">
@@ -61,6 +84,27 @@ function SessionSection({
             />
           );
         })}
+        {!streaming && results.length === 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-2 py-5 text-center">
+            <p className="text-[11.5px] text-faint">
+              {failed
+                ? rateLimited
+                  ? "Provider rate-limited (free tier)."
+                  : "Generation failed."
+                : "No results."}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={retry}
+              disabled={regen.isPending}
+              className="h-7 gap-1.5 px-2.5 text-[11.5px]"
+            >
+              <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+              Try again
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

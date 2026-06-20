@@ -9,6 +9,7 @@ import {
   Maximize2,
   Minus,
   Plus,
+  RotateCw,
   Sparkles,
 } from "lucide-react";
 import {
@@ -26,7 +27,7 @@ import {
   usePostApiResultsResultIdFavorite,
 } from "@/api/endpoints/results/results";
 import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto } from "@/api/model";
-import { ModelSelect } from "@/components/generation/model-select";
+import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { Button } from "@/components/ui/button";
 import { modelLabel } from "@/lib/format";
 import { providerDot } from "@/lib/models";
@@ -463,12 +464,10 @@ function PromptNode({
         >
           <Sparkles className="size-3.5" /> Generate more
         </Button>
-        <ModelSelect
-          value={null}
-          onChange={addModel}
-          includeDefault={false}
-          placeholder="+ Model"
-          className="h-8 flex-1 rounded-lg text-[11.5px]"
+        <AddModelMenu
+          onPick={addModel}
+          existing={group.sessions.map((s) => s.session.model)}
+          disabled={regen.isPending}
         />
       </div>
     </div>
@@ -492,14 +491,33 @@ function ModelColumn({
   onLayoutChange: () => void;
 }) {
   const { live } = useGenerationStream();
+  const qc = useQueryClient();
+  const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const [collapsed, setCollapsed] = useState(false);
   const ls = live[item.session.id];
   const status = (ls?.status ?? item.session.status) as string;
   const streaming = status === SessionStatus.Streaming || status === SessionStatus.Queued;
+  const failed = status === SessionStatus.Failed;
+  const error = (ls?.error ?? item.session.error) ?? null;
+  const rateLimited = !!error && error.includes("429");
 
   const results = [...item.results].sort((a, b) => a.index - b.index);
   const model = item.session.model;
   const dot = providerDot(model);
+
+  const retry = () => {
+    regen.mutate(
+      { sessionId: item.session.id, data: { model: null } },
+      {
+        onSuccess: () => {
+          invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
+          onLayoutChange();
+        },
+        onError: () => toast.error("Couldn’t retry"),
+      },
+    );
+    toast.success("Retrying…");
+  };
 
   // only show live deltas for indices that don't yet have a finalized result
   const resultIndices = new Set(results.map((r) => r.index));
@@ -564,7 +582,35 @@ function ModelColumn({
             <ResultRow key={r.id} result={r} scriptId={scriptId} onLayoutChange={onLayoutChange} />
           ))}
           {!streaming && results.length === 0 && (
-            <p className="px-2 py-3 text-center text-[11.5px] text-faint">No results.</p>
+            <div className="flex flex-col items-center gap-2 px-2 py-3 text-center">
+              <p className="text-[11.5px] text-faint">
+                {failed
+                  ? rateLimited
+                    ? "Provider rate-limited (free tier)."
+                    : "Generation failed."
+                  : "No results."}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={retry}
+                disabled={regen.isPending}
+                className="h-7 gap-1.5 px-2.5 text-[11.5px]"
+              >
+                <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+                Try again
+              </Button>
+            </div>
+          )}
+          {!streaming && failed && results.length > 0 && (
+            <button
+              onClick={retry}
+              disabled={regen.isPending}
+              className="flex items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border-strong px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-60"
+            >
+              <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+              Retry — partial result
+            </button>
           )}
         </div>
       )}
@@ -639,7 +685,7 @@ function ResultRow({
         }}
       >
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <span className={cn("min-w-0 flex-1 text-[12.5px] leading-snug font-medium", !open && "truncate")}>
+        <span className="min-w-0 flex-1 truncate text-[12.5px] leading-snug font-medium">
           {result.content}
         </span>
         <span className="shrink-0 text-[10px] text-faint tabular-nums">{result.content.length}</span>

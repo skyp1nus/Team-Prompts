@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Search, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDeleteApiScriptsId, useGetApiScripts } from "@/api/endpoints/scripts/scripts";
 import { FileType, type ScriptListItemDto } from "@/api/model";
@@ -18,12 +18,21 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript } = useWorkspace();
+  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, pruneScripts } =
+    useWorkspace();
 
   const { data: scripts, isLoading } = useGetApiScripts(
     search.trim() ? { search: search.trim() } : undefined,
   );
   const del = useDeleteApiScriptsId();
+
+  // Self-heal: drop any selected script id that no longer exists, so a stale selection
+  // (e.g. after deleting a batch-selected script) never gets sent to generation.
+  const isSearching = !!search.trim();
+  useEffect(() => {
+    if (isSearching || !scripts) return;
+    pruneScripts(scripts.map((s) => s.id));
+  }, [scripts, isSearching, pruneScripts]);
 
   const onDelete = (id: string, name: string) => {
     if (!confirm(`Delete "${name}" and all its generations?`)) return;
@@ -32,6 +41,7 @@ export function ScriptsPanel() {
       {
         onSuccess: async () => {
           if (activeScriptId === id) setActiveScriptId(null);
+          if (batchScriptIds.includes(id)) toggleBatchScript(id);
           await invalidatePath(qc, "/api/scripts");
           toast.success("Script deleted");
         },
