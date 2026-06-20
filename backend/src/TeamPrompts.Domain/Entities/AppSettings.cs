@@ -8,9 +8,13 @@ public class AppSettings
     /// <summary>Encrypted OpenRouter API key. Write-only — never returned by any API.</summary>
     public string? OpenRouterApiKeyEncrypted { get; set; }
 
+    /// <summary>Generation fallback model. Kept in sync with the first favorite.</summary>
     public string DefaultModel { get; set; } = "openai/gpt-5";
 
-    /// <summary>JSON array of available model ids (cached from OpenRouter's models endpoint).</summary>
+    /// <summary>JSON array of the team's favorite model ids — the curated set shown in the Generate picker.</summary>
+    public string FavoriteModels { get; set; } = "[]";
+
+    /// <summary>JSON array of available models (cached from OpenRouter's models endpoint).</summary>
     public string AvailableModels { get; set; } = "[]";
 
     public DateTimeOffset UpdatedAt { get; set; }

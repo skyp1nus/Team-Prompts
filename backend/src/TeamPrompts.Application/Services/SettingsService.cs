@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TeamPrompts.Application.Abstractions;
+using TeamPrompts.Application.Common;
 using TeamPrompts.Application.Dtos;
 using TeamPrompts.Domain.Entities;
 
@@ -15,7 +16,8 @@ public interface ISettingsService
 {
     Task<SettingsDto> GetAsync(CancellationToken ct = default);
     Task SetApiKeyAsync(string apiKey, CancellationToken ct = default);
-    Task SetDefaultModelAsync(string model, CancellationToken ct = default);
+    Task DeleteApiKeyAsync(CancellationToken ct = default);
+    Task SetFavoriteModelsAsync(IReadOnlyList<string> models, CancellationToken ct = default);
     Task<IReadOnlyList<ModelDto>> RefreshModelsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<ModelDto>> GetModelsAsync(CancellationToken ct = default);
 
@@ -33,27 +35,47 @@ public sealed class SettingsService(
     public async Task<SettingsDto> GetAsync(CancellationToken ct = default)
     {
         var s = await GetRowAsync(ct);
-        return new SettingsDto(!string.IsNullOrEmpty(s.OpenRouterApiKeyEncrypted), s.DefaultModel, ParseModels(s.AvailableModels));
+        return new SettingsDto(
+            !string.IsNullOrEmpty(s.OpenRouterApiKeyEncrypted), s.DefaultModel,
+            ParseFavorites(s.FavoriteModels), ParseModels(s.AvailableModels));
     }
 
     public async Task SetApiKeyAsync(string apiKey, CancellationToken ct = default)
     {
         var s = await GetRowAsync(ct);
+        // One key at a time — must be explicitly removed before a different one can be set,
+        // so nobody silently overwrites the shared team key.
+        if (!string.IsNullOrEmpty(s.OpenRouterApiKeyEncrypted))
+            throw new AppValidationException("An API key is already set. Remove it before adding a new one.");
         s.OpenRouterApiKeyEncrypted = protector.Protect(apiKey.Trim());
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task SetDefaultModelAsync(string model, CancellationToken ct = default)
+    public async Task DeleteApiKeyAsync(CancellationToken ct = default)
     {
         var s = await GetRowAsync(ct);
-        s.DefaultModel = model.Trim();
+        s.OpenRouterApiKeyEncrypted = null;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SetFavoriteModelsAsync(IReadOnlyList<string> models, CancellationToken ct = default)
+    {
+        var clean = (models ?? [])
+            .Select(m => m?.Trim() ?? string.Empty)
+            .Where(m => m.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var s = await GetRowAsync(ct);
+        s.FavoriteModels = JsonSerializer.Serialize(clean);
+        if (clean.Count > 0) s.DefaultModel = clean[0]; // first favorite is the generation fallback
         await db.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<ModelDto>> RefreshModelsAsync(CancellationToken ct = default)
     {
         var models = await openRouter.ListModelsAsync(ct);
-        var dtos = models.Select(m => new ModelDto(m.Id, m.Name, m.Description)).ToList();
+        var dtos = models.Select(m => new ModelDto(m.Id, m.Name, m.Description, m.IsFree)).ToList();
 
         var s = await GetRowAsync(ct);
         s.AvailableModels = JsonSerializer.Serialize(dtos);
@@ -101,13 +123,13 @@ public sealed class SettingsService(
 
     private static IReadOnlyList<ModelDto> ParseModels(string json)
     {
-        try
-        {
-            return JsonSerializer.Deserialize<List<ModelDto>>(json) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
+        try { return JsonSerializer.Deserialize<List<ModelDto>>(json) ?? []; }
+        catch { return []; }
+    }
+
+    private static IReadOnlyList<string> ParseFavorites(string json)
+    {
+        try { return JsonSerializer.Deserialize<List<string>>(json) ?? []; }
+        catch { return []; }
     }
 }

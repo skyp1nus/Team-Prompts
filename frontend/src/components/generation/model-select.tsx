@@ -1,6 +1,6 @@
 "use client";
 
-import { useGetApiSettingsModels } from "@/api/endpoints/settings/settings";
+import { useGetApiSettings } from "@/api/endpoints/settings/settings";
 import {
   Select,
   SelectContent,
@@ -24,7 +24,11 @@ export function ModelSelect({
   className?: string;
   placeholder?: string;
 }) {
-  const { data: models } = useGetApiSettingsModels();
+  const { data: settings } = useGetApiSettings();
+  const all = settings?.availableModels ?? [];
+  const favIds = settings?.favoriteModels ?? [];
+  // Only the team's favorite models here — keeps the dropdown short instead of listing all 300+.
+  const models = favIds.length > 0 ? all.filter((m) => favIds.includes(m.id)) : all;
 
   return (
     <Select
@@ -34,13 +38,18 @@ export function ModelSelect({
       <SelectTrigger className={className ?? "h-8 w-[190px]"}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="max-h-[280px] w-[240px]">
         {includeDefault && <SelectItem value={DEFAULT}>Default model</SelectItem>}
-        {(models ?? []).map((m) => (
+        {models.map((m) => (
           <SelectItem key={m.id} value={m.id}>
             {m.name ?? m.id}
           </SelectItem>
         ))}
+        {models.length === 0 && (
+          <div className="px-2 py-3 text-center text-[12px] text-faint">
+            No favorite models — set them in Settings.
+          </div>
+        )}
       </SelectContent>
     </Select>
   );

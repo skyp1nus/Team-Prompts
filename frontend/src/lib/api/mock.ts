@@ -37,12 +37,12 @@ const admin: UserDto = {
 const ref = (name: string): UserRef => ({ id: "u-" + name.split(" ")[0].toLowerCase(), displayName: name });
 
 const MODELS: ModelDto[] = [
-  { id: "openai/gpt-5", name: "GPT-5", description: null },
-  { id: "openai/gpt-4o", name: "GPT-4o", description: null },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o mini", description: null },
-  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet", description: null },
-  { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", description: null },
-  { id: "google/gemini-2.0-flash", name: "Gemini 2.0 Flash", description: null },
+  { id: "openai/gpt-5", name: "GPT-5", description: null, isFree: false },
+  { id: "openai/gpt-4o", name: "GPT-4o", description: null, isFree: false },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o mini", description: null, isFree: false },
+  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet", description: null, isFree: false },
+  { id: "openai/gpt-oss-120b:free", name: "gpt-oss-120b (free)", description: null, isFree: true },
+  { id: "google/gemma-4-31b-it:free", name: "Gemma 4 31B (free)", description: null, isFree: true },
 ];
 
 const TITLE_POOL = [
@@ -404,11 +404,16 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
 
   // settings
   if (url === "/api/settings" && method === "GET")
-    return reply<SettingsDto>({ isApiKeySet: true, defaultModel: defaultModel(), availableModels: MODELS });
+    return reply<SettingsDto>({
+      isApiKeySet: true,
+      defaultModel: defaultModel(),
+      favoriteModels: MODELS.slice(0, 2).map((m) => m.id),
+      availableModels: MODELS,
+    });
   if (url === "/api/settings/models" && method === "GET") return reply<ModelDto[]>(MODELS);
   if (url === "/api/settings/models/refresh") return reply<ModelDto[]>(MODELS, 300);
   if (url === "/api/settings/api-key") return reply({}, 200);
-  if (url === "/api/settings/default-model") return reply({}, 200);
+  if (url === "/api/settings/favorite-models") return reply({}, 200);
 
   // users
   if (url === "/api/users" && method === "POST") return reply({ id: uid("u"), ...body }, 250);

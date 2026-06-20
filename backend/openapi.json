@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:5258/"
+      "url": "http://localhost:8080/"
     }
   ],
   "paths": {
@@ -1113,9 +1113,19 @@
             "description": "OK"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
-    "/api/settings/default-model": {
+    "/api/settings/favorite-models": {
       "put": {
         "tags": [
           "Settings"
@@ -1124,17 +1134,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetDefaultModelRequest"
+                "$ref": "#/components/schemas/SetFavoriteModelsRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetDefaultModelRequest"
+                "$ref": "#/components/schemas/SetFavoriteModelsRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/SetDefaultModelRequest"
+                "$ref": "#/components/schemas/SetFavoriteModelsRequest"
               }
             }
           },
@@ -1467,7 +1477,8 @@
         "required": [
           "id",
           "name",
-          "description"
+          "description",
+          "isFree"
         ],
         "type": "object",
         "properties": {
@@ -1481,6 +1492,9 @@
           "description": {
             "type": "string",
             "nullable": true
+          },
+          "isFree": {
+            "type": "boolean"
           }
         }
       },
@@ -1822,14 +1836,17 @@
           }
         }
       },
-      "SetDefaultModelRequest": {
+      "SetFavoriteModelsRequest": {
         "required": [
-          "model"
+          "models"
         ],
         "type": "object",
         "properties": {
-          "model": {
-            "type": "string"
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1837,6 +1854,7 @@
         "required": [
           "isApiKeySet",
           "defaultModel",
+          "favoriteModels",
           "availableModels"
         ],
         "type": "object",
@@ -1846,6 +1864,12 @@
           },
           "defaultModel": {
             "type": "string"
+          },
+          "favoriteModels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "availableModels": {
             "type": "array",

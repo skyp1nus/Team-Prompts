@@ -5,6 +5,6 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface SetDefaultModelRequest {
-  model: string;
+export interface SetFavoriteModelsRequest {
+  models: string[];
 }

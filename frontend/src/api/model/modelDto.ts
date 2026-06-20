@@ -11,4 +11,5 @@ export interface ModelDto {
   name: string | null;
   /** @nullable */
   description: string | null;
+  isFree: boolean;
 }

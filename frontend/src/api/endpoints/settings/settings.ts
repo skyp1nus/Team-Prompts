@@ -26,7 +26,7 @@ import type {
 import type {
   ModelDto,
   SetApiKeyRequest,
-  SetDefaultModelRequest,
+  SetFavoriteModelsRequest,
   SettingsDto
 } from '../../model';
 
@@ -282,27 +282,25 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getPutApiSettingsApiKeyMutationOptions(options), queryClient);
     }
-    export const putApiSettingsDefaultModel = (
-    setDefaultModelRequest: BodyType<SetDefaultModelRequest>,
+    export const deleteApiSettingsApiKey = (
+
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
 
 
       return customInstance<void>(
-      {url: `/api/settings/default-model`, method: 'PUT',
-      headers: {'Content-Type': 'application/json', },
-      data: setDefaultModelRequest, signal
+      {url: `/api/settings/api-key`, method: 'DELETE', signal
     },
       options);
     }
 
 
 
-export const getPutApiSettingsDefaultModelMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsDefaultModel>>, TError,{data: BodyType<SetDefaultModelRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsDefaultModel>>, TError,{data: BodyType<SetDefaultModelRequest>}, TContext> => {
+export const getDeleteApiSettingsApiKeyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiSettingsApiKey>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiSettingsApiKey>>, TError,void, TContext> => {
 
-const mutationKey = ['putApiSettingsDefaultModel'];
+const mutationKey = ['deleteApiSettingsApiKey'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -312,10 +310,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiSettingsDefaultModel>>, {data: BodyType<SetDefaultModelRequest>}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiSettingsApiKey>>, void> = () => {
 
-          return  putApiSettingsDefaultModel(data,requestOptions)
+
+          return  deleteApiSettingsApiKey(requestOptions)
         }
 
 
@@ -325,19 +323,76 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type PutApiSettingsDefaultModelMutationResult = NonNullable<Awaited<ReturnType<typeof putApiSettingsDefaultModel>>>
-    export type PutApiSettingsDefaultModelMutationBody = BodyType<SetDefaultModelRequest>
-    export type PutApiSettingsDefaultModelMutationError = ErrorType<unknown>
+    export type DeleteApiSettingsApiKeyMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiSettingsApiKey>>>
 
-    export const usePutApiSettingsDefaultModel = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsDefaultModel>>, TError,{data: BodyType<SetDefaultModelRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+    export type DeleteApiSettingsApiKeyMutationError = ErrorType<unknown>
+
+    export const useDeleteApiSettingsApiKey = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiSettingsApiKey>>, TError,void, TContext>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof putApiSettingsDefaultModel>>,
+        Awaited<ReturnType<typeof deleteApiSettingsApiKey>>,
         TError,
-        {data: BodyType<SetDefaultModelRequest>},
+        void,
         TContext
       > => {
-      return useMutation(getPutApiSettingsDefaultModelMutationOptions(options), queryClient);
+      return useMutation(getDeleteApiSettingsApiKeyMutationOptions(options), queryClient);
+    }
+    export const putApiSettingsFavoriteModels = (
+    setFavoriteModelsRequest: BodyType<SetFavoriteModelsRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/settings/favorite-models`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: setFavoriteModelsRequest, signal
+    },
+      options);
+    }
+
+
+
+export const getPutApiSettingsFavoriteModelsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>, TError,{data: BodyType<SetFavoriteModelsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>, TError,{data: BodyType<SetFavoriteModelsRequest>}, TContext> => {
+
+const mutationKey = ['putApiSettingsFavoriteModels'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>, {data: BodyType<SetFavoriteModelsRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  putApiSettingsFavoriteModels(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiSettingsFavoriteModelsMutationResult = NonNullable<Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>>
+    export type PutApiSettingsFavoriteModelsMutationBody = BodyType<SetFavoriteModelsRequest>
+    export type PutApiSettingsFavoriteModelsMutationError = ErrorType<unknown>
+
+    export const usePutApiSettingsFavoriteModels = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>, TError,{data: BodyType<SetFavoriteModelsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof putApiSettingsFavoriteModels>>,
+        TError,
+        {data: BodyType<SetFavoriteModelsRequest>},
+        TContext
+      > => {
+      return useMutation(getPutApiSettingsFavoriteModelsMutationOptions(options), queryClient);
     }
     export const postApiSettingsModelsRefresh = (
 

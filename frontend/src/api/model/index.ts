@@ -27,7 +27,7 @@ export * from './sessionDto';
 export * from './sessionStatus';
 export * from './sessionWithResultsDto';
 export * from './setApiKeyRequest';
-export * from './setDefaultModelRequest';
+export * from './setFavoriteModelsRequest';
 export * from './settingsDto';
 export * from './trayItemDto';
 export * from './updatePromptRequest';
