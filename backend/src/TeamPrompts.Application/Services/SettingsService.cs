@@ -19,8 +19,9 @@ public interface ISettingsService
     Task<IReadOnlyList<ModelDto>> RefreshModelsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<ModelDto>> GetModelsAsync(CancellationToken ct = default);
 
-    /// <summary>Checks the configured default model id against OpenRouter's /models. Never throws:
-    /// returns NoKey when no key is set (no network call), Error when the lookup fails.</summary>
+    /// <summary>Checks the configured default model id against OpenRouter's /models. Returns NoKey when
+    /// no key is set (no network call) and Error when the lookup fails; only a caller cancellation
+    /// (OperationCanceledException) propagates, so shutdown isn't reported as a validation error.</summary>
     Task<ModelValidationResult> ValidateDefaultModelAsync(CancellationToken ct = default);
 }
 
@@ -80,7 +81,7 @@ public sealed class SettingsService(
                 ? new ModelValidationResult(ModelValidationStatus.Found, s.DefaultModel, null)
                 : new ModelValidationResult(ModelValidationStatus.NotFound, s.DefaultModel, $"{models.Count} models listed");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return new ModelValidationResult(ModelValidationStatus.Error, s.DefaultModel, ex.Message);
         }

@@ -16,6 +16,11 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
     /// partially-streamed completion mid-flight. Cancellation is driven by the caller's token.</summary>
     public const string StreamClientName = "openrouter-stream";
 
+    /// <summary>Max idle gap between streamed lines before the stream is treated as stalled. OpenRouter
+    /// emits periodic keep-alive comments, so a healthy (even slow) completion resets this on every
+    /// line; only a genuinely silent connection trips it. Not a total cap — a long stream runs freely.</summary>
+    private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(90);
+
     public async IAsyncEnumerable<string> StreamChatAsync(
         OpenRouterChatRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -35,7 +40,12 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
         };
         msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-        // Use the non-resilient streaming client so retries/total-timeout never sever the SSE stream.
+        // Non-resilient streaming client: a total-request timeout or auto-retry would sever or replay a
+        // partial SSE completion. We deliberately do NOT auto-retry either — chat/completions is a
+        // non-idempotent, billable POST, so re-firing after a connection fault (which may have occurred
+        // *after* OpenRouter began a completion) could double-bill. The hang risk is bounded without
+        // retry: the handler's ConnectTimeout caps the connect phase, and the per-read idle timeout
+        // below caps silent gaps once streaming has started.
         var streamClient = httpFactory.CreateClient(StreamClientName);
         using var resp = await streamClient.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureOkAsync(resp, ct);
@@ -43,9 +53,28 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
-        string? line;
-        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        while (true)
         {
+            string? line;
+            // Reset the idle clock on every line. Keep-alive comments count, so a healthy long
+            // generation never trips it, but a silent (stalled) connection does after StreamIdleTimeout.
+            using (var idle = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                idle.CancelAfter(StreamIdleTimeout);
+                try
+                {
+                    line = await reader.ReadLineAsync(idle.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    throw new TimeoutException(
+                        $"OpenRouter stream stalled: no data for {StreamIdleTimeout.TotalSeconds:n0}s.");
+                }
+            }
+
+            if (line is null)
+                break;
+
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:", StringComparison.Ordinal))
                 continue;
 
