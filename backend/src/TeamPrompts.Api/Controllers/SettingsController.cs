@@ -27,11 +27,21 @@ public sealed class SettingsController(ISettingsService settings) : ControllerBa
         return NoContent();
     }
 
-    [HttpPut("default-model")]
+    /// <summary>Admin: remove the stored API key so a new one can be set.</summary>
+    [HttpDelete("api-key")]
     [Authorize(Policy = "Admin")]
-    public async Task<IActionResult> SetDefaultModel(SetDefaultModelRequest req, CancellationToken ct)
+    public async Task<IActionResult> DeleteApiKey(CancellationToken ct)
     {
-        await settings.SetDefaultModelAsync(req.Model, ct);
+        await settings.DeleteApiKeyAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>Admin: set the team's favorite models (first one becomes the generation fallback).</summary>
+    [HttpPut("favorite-models")]
+    [Authorize(Policy = "Admin")]
+    public async Task<IActionResult> SetFavoriteModels(SetFavoriteModelsRequest req, CancellationToken ct)
+    {
+        await settings.SetFavoriteModelsAsync(req.Models, ct);
         return NoContent();
     }
 

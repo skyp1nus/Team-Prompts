@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -110,10 +111,23 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
                 if (string.IsNullOrEmpty(id)) continue;
                 var name = m.TryGetProperty("name", out var n) ? n.GetString() : null;
                 var desc = m.TryGetProperty("description", out var d) ? d.GetString() : null;
-                list.Add(new OpenRouterModel(id, name, desc));
+                list.Add(new OpenRouterModel(id, name, desc, IsFreeModel(id, m)));
             }
         }
         return list;
+    }
+
+    /// <summary>A model is free when its id is suffixed ":free" or its prompt+completion pricing is zero.</summary>
+    private static bool IsFreeModel(string id, JsonElement model)
+    {
+        if (id.EndsWith(":free", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!model.TryGetProperty("pricing", out var p) || p.ValueKind != JsonValueKind.Object) return false;
+        return IsZero(p, "prompt") && IsZero(p, "completion");
+
+        static bool IsZero(JsonElement pricing, string key) =>
+            pricing.TryGetProperty(key, out var v)
+            && double.TryParse(v.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            && d == 0;
     }
 
     private static string? ParseDelta(string data)

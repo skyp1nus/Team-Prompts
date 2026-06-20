@@ -14,14 +14,14 @@ public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
 
 public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
-    private static readonly string[] Roles = ["Admin", "Member"];
+    private static readonly string[] Roles = ["Owner", "Admin", "Member"];
 
     public CreateUserRequestValidator()
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
         RuleFor(x => x.Password).NotEmpty().MinimumLength(6);
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Role).Must(r => Roles.Contains(r)).WithMessage("Role must be Admin or Member.");
+        RuleFor(x => x.Role).Must(r => Roles.Contains(r)).WithMessage("Role must be Owner, Admin or Member.");
     }
 }
 
@@ -69,7 +69,11 @@ public sealed class SetApiKeyRequestValidator : AbstractValidator<SetApiKeyReque
     public SetApiKeyRequestValidator() => RuleFor(x => x.ApiKey).NotEmpty();
 }
 
-public sealed class SetDefaultModelRequestValidator : AbstractValidator<SetDefaultModelRequest>
+public sealed class SetFavoriteModelsRequestValidator : AbstractValidator<SetFavoriteModelsRequest>
 {
-    public SetDefaultModelRequestValidator() => RuleFor(x => x.Model).NotEmpty();
+    public SetFavoriteModelsRequestValidator()
+    {
+        RuleFor(x => x.Models).NotNull();
+        RuleForEach(x => x.Models).NotEmpty().MaximumLength(200);
+    }
 }

@@ -63,7 +63,9 @@ public sealed record TrayItemDto(
     string PromptName, string Model, DateTimeOffset CreatedAt);
 
 // ---- Settings & models ----
-public sealed record ModelDto(string Id, string? Name, string? Description);
-public sealed record SettingsDto(bool IsApiKeySet, string DefaultModel, IReadOnlyList<ModelDto> AvailableModels);
+public sealed record ModelDto(string Id, string? Name, string? Description, bool IsFree);
+public sealed record SettingsDto(
+    bool IsApiKeySet, string DefaultModel,
+    IReadOnlyList<string> FavoriteModels, IReadOnlyList<ModelDto> AvailableModels);
 public sealed record SetApiKeyRequest(string ApiKey);
-public sealed record SetDefaultModelRequest(string Model);
+public sealed record SetFavoriteModelsRequest(IReadOnlyList<string> Models);

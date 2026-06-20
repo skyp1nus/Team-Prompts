@@ -16,4 +16,4 @@ public sealed record OpenRouterChatRequest(
 
 public sealed record OpenRouterMessage(string Role, string Content);
 
-public sealed record OpenRouterModel(string Id, string? Name, string? Description);
+public sealed record OpenRouterModel(string Id, string? Name, string? Description, bool IsFree);

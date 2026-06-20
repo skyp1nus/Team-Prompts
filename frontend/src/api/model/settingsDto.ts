@@ -9,5 +9,6 @@ import type { ModelDto } from './modelDto';
 export interface SettingsDto {
   isApiKeySet: boolean;
   defaultModel: string;
+  favoriteModels: string[];
   availableModels: ModelDto[];
 }

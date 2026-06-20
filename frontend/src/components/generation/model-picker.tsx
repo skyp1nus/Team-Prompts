@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Sparkles } from "lucide-react";
-import { useGetApiSettingsModels } from "@/api/endpoints/settings/settings";
+import { useGetApiSettings } from "@/api/endpoints/settings/settings";
 import type { ModelDto } from "@/api/model";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { providerDot, providerOf } from "@/lib/models";
@@ -9,9 +9,12 @@ import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function ModelPicker() {
-  const { data: models } = useGetApiSettingsModels();
+  const { data: settings } = useGetApiSettings();
   const { runModels, toggleRunModel, setRunModels } = useWorkspace();
-  const list = models ?? [];
+  const all = settings?.availableModels ?? [];
+  const favIds = settings?.favoriteModels ?? [];
+  // Favorites curate the picker; fall back to every model until a team picks favorites.
+  const list = favIds.length > 0 ? all.filter((m) => favIds.includes(m.id)) : all;
 
   const grouped = list.reduce<Record<string, ModelDto[]>>((acc, m) => {
     const p = providerOf(m.id);
