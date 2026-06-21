@@ -29,7 +29,7 @@ import {
 import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { Button } from "@/components/ui/button";
-import { modelLabel } from "@/lib/format";
+import { formatRelative, modelLabel } from "@/lib/format";
 import { providerDot } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
@@ -271,7 +271,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
             const collapsed = collapsedPrompts.has(g.promptId);
             const promptLit =
               (hover?.type === "prompt" && hover.id === g.promptId) ||
-              (hover?.type === "col" && g.sessions.some((s) => s.session.id === hover.id));
+              (hover?.type === "col" && (hover.id ?? "").startsWith(`${g.promptId}::`));
             return (
               <div key={g.promptId} className="flex w-max flex-col items-center">
                 <PromptNode
@@ -288,23 +288,28 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
                 />
                 {!collapsed && (
                   <div className="relative flex items-start gap-6" style={{ zIndex: 1 }}>
-                    {g.sessions.map((s) => (
-                      <ModelColumn
-                        key={s.session.id}
-                        item={s}
-                        promptId={g.promptId}
-                        scriptId={scriptId}
-                        lit={
-                          (hover?.type === "col" && hover.id === s.session.id) ||
-                          (hover?.type === "prompt" && hover.id === g.promptId)
-                        }
-                        onHover={(h) => {
-                          if (panningRef.current) return;
-                          setHover(h ? { type: "col", id: s.session.id } : null);
-                        }}
-                        onLayoutChange={bumpLayout}
-                      />
-                    ))}
+                    {groupModels(g.sessions).map((mg) => {
+                      const colId = `${g.promptId}::${mg.model}`;
+                      return (
+                        <ModelColumn
+                          key={colId}
+                          colId={colId}
+                          model={mg.model}
+                          runs={mg.runs}
+                          promptId={g.promptId}
+                          scriptId={scriptId}
+                          lit={
+                            (hover?.type === "col" && hover.id === colId) ||
+                            (hover?.type === "prompt" && hover.id === g.promptId)
+                          }
+                          onHover={(h) => {
+                            if (panningRef.current) return;
+                            setHover(h ? { type: "col", id: colId } : null);
+                          }}
+                          onLayoutChange={bumpLayout}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -379,13 +384,19 @@ function PromptNode({
   const qc = useQueryClient();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const total = group.sessions.reduce((a, s) => a + s.results.length, 0);
-  const latest = group.sessions[0];
+  const models = groupModels(group.sessions);
+  const modelCount = models.length;
+  const latest = group.sessions[group.sessions.length - 1];
   const invalidate = () => invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
 
   const regenMore = () => {
-    group.sessions.forEach((s) =>
-      regen.mutate({ sessionId: s.session.id, data: { model: null } }, { onSuccess: invalidate }),
-    );
+    // one fresh run per model — from each model's newest run as the template
+    models.forEach(({ runs }) => {
+      const newest = [...runs].sort(
+        (a, b) => +new Date(b.session.createdAt) - +new Date(a.session.createdAt),
+      )[0];
+      regen.mutate({ sessionId: newest.session.id, data: { model: null } }, { onSuccess: invalidate });
+    });
     toast.success("Regenerating…");
   };
 
@@ -446,8 +457,8 @@ function PromptNode({
 
       <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-[11.5px] text-muted-foreground">
         <span>
-          <b className="font-bold text-foreground tabular-nums">{group.sessions.length}</b> model
-          {group.sessions.length === 1 ? "" : "s"}
+          <b className="font-bold text-foreground tabular-nums">{modelCount}</b> model
+          {modelCount === 1 ? "" : "s"}
         </span>
         <span className="size-[3px] rounded-full bg-faint" />
         <span>
@@ -475,15 +486,30 @@ function PromptNode({
 }
 
 /* ============================ MODEL COLUMN ============================ */
+/** Buckets a prompt group's sessions into one entry per model, in first-appearance order. */
+function groupModels(sessions: SessionWithResultsDto[]): { model: string; runs: SessionWithResultsDto[] }[] {
+  const map = new Map<string, SessionWithResultsDto[]>();
+  for (const s of sessions) {
+    if (!map.has(s.session.model)) map.set(s.session.model, []);
+    map.get(s.session.model)!.push(s);
+  }
+  return [...map.entries()].map(([model, runs]) => ({ model, runs }));
+}
+
+/** One card per model. Each "Generate more" run shows inside, divided + labelled, newest first. */
 function ModelColumn({
-  item,
+  colId,
+  model,
+  runs,
   promptId,
   scriptId,
   lit,
   onHover,
   onLayoutChange,
 }: {
-  item: SessionWithResultsDto;
+  colId: string;
+  model: string;
+  runs: SessionWithResultsDto[];
   promptId: string;
   scriptId: string;
   lit: boolean;
@@ -494,20 +520,149 @@ function ModelColumn({
   const qc = useQueryClient();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const [collapsed, setCollapsed] = useState(false);
-  const ls = live[item.session.id];
-  const status = (ls?.status ?? item.session.status) as string;
+  const dot = providerDot(model);
+
+  const ordered = [...runs].sort(
+    (a, b) => +new Date(b.session.createdAt) - +new Date(a.session.createdAt),
+  );
+
+  // Generate one more run for THIS model only (from its newest run as the template).
+  const generateMore = () => {
+    const newest = ordered[0];
+    if (!newest) return;
+    regen.mutate(
+      { sessionId: newest.session.id, data: { model: null } },
+      {
+        onSuccess: () => {
+          invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
+          onLayoutChange();
+        },
+        onError: () => toast.error("Couldn’t generate"),
+      },
+    );
+    toast.success("Generating…");
+  };
+  const isActive = (r: SessionWithResultsDto) => {
+    const st = (live[r.session.id]?.status ?? r.session.status) as string;
+    return st === SessionStatus.Streaming || st === SessionStatus.Queued;
+  };
+  // Show every run that has results, plus active runs. A failed/empty run is only shown when it's
+  // the very latest attempt — so repeated rate-limited retries don't stack identical blocks.
+  const displayed = ordered.filter(
+    (run, i) => run.results.length > 0 || isActive(run) || i === 0,
+  );
+  const anyStreaming = ordered.some(isActive);
+  // The newest run already shows its own "Try again" when it failed/emptied — so don't double up
+  // with the header's generate button in that case.
+  const newestFailed = !!ordered[0] && !isActive(ordered[0]) && ordered[0].results.length === 0;
+
+  return (
+    <div
+      data-node
+      data-col-parent={promptId}
+      data-col={colId}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      className={cn(
+        "w-[288px] shrink-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-[box-shadow,border-color] hover:shadow-md",
+        lit && "border-primary shadow-md",
+      )}
+    >
+      <div
+        className={cn(
+          "flex w-full items-center bg-background",
+          !collapsed && "border-b border-border",
+        )}
+      >
+        <button
+          onClick={() => {
+            setCollapsed((c) => !c);
+            onLayoutChange();
+          }}
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-2 pl-3.5 text-left transition-colors hover:bg-accent"
+        >
+          <span className="flex size-[18px] shrink-0 items-center justify-center text-muted-foreground">
+            <ChevronRight className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")} />
+          </span>
+          <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">{modelLabel(model)}</span>
+          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+            {anyStreaming ? (
+              <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
+                <Loader2 className="size-3 animate-spin" /> running…
+              </span>
+            ) : (
+              <>
+                {displayed.length} run{displayed.length === 1 ? "" : "s"}
+              </>
+            )}
+          </span>
+        </button>
+        {!newestFailed && (
+          <button
+            onClick={generateMore}
+            disabled={regen.isPending || anyStreaming}
+            title="Generate more"
+            aria-label="Generate more"
+            className="mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
+          >
+            {regen.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
+          </button>
+        )}
+      </div>
+
+      {!collapsed && (
+        <div className="flex flex-col">
+          {displayed.map((run, i) => (
+            <div key={run.session.id} className={cn("p-2.5", i > 0 && "border-t border-border")}>
+              <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] text-faint">
+                <span className="font-semibold tracking-wide uppercase">
+                  {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
+                </span>
+                <span>{formatRelative(run.session.createdAt)}</span>
+              </div>
+              <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One generation run inside a model card: its live stream, results, or failed state + retry. */
+function RunBlock({
+  run,
+  scriptId,
+  onLayoutChange,
+}: {
+  run: SessionWithResultsDto;
+  scriptId: string;
+  onLayoutChange: () => void;
+}) {
+  const { live } = useGenerationStream();
+  const qc = useQueryClient();
+  const regen = usePostApiGenerationSessionsSessionIdRegenerate();
+  const ls = live[run.session.id];
+  const status = (ls?.status ?? run.session.status) as string;
   const streaming = status === SessionStatus.Streaming || status === SessionStatus.Queued;
   const failed = status === SessionStatus.Failed;
-  const error = (ls?.error ?? item.session.error) ?? null;
+  const error = (ls?.error ?? run.session.error) ?? null;
   const rateLimited = !!error && error.includes("429");
 
-  const results = [...item.results].sort((a, b) => a.index - b.index);
-  const model = item.session.model;
-  const dot = providerDot(model);
+  const results = [...run.results].sort((a, b) => a.index - b.index);
+  const resultIndices = new Set(results.map((r) => r.index));
+  const liveDeltas = ls
+    ? Object.entries(ls.deltas).filter(([idx]) => !resultIndices.has(Number(idx)))
+    : [];
 
   const retry = () => {
     regen.mutate(
-      { sessionId: item.session.id, data: { model: null } },
+      { sessionId: run.session.id, data: { model: null } },
       {
         onSuccess: () => {
           invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
@@ -519,100 +674,52 @@ function ModelColumn({
     toast.success("Retrying…");
   };
 
-  // only show live deltas for indices that don't yet have a finalized result
-  const resultIndices = new Set(results.map((r) => r.index));
-  const liveDeltas = ls
-    ? Object.entries(ls.deltas).filter(([idx]) => !resultIndices.has(Number(idx)))
-    : [];
-
   return (
-    <div
-      data-node
-      data-col-parent={promptId}
-      data-col={item.session.id}
-      onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
-      className={cn(
-        "w-[288px] shrink-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-[box-shadow,border-color] hover:shadow-md",
-        lit && "border-primary shadow-md",
-      )}
-    >
-      <button
-        onClick={() => {
-          setCollapsed((c) => !c);
-          onLayoutChange();
-        }}
-        className={cn(
-          "flex w-full items-center gap-2.5 bg-background px-3.5 py-3 text-left transition-colors hover:bg-accent",
-          !collapsed && "border-b border-border",
-        )}
-      >
-        <span className="flex size-[18px] shrink-0 items-center justify-center text-muted-foreground">
-          <ChevronRight className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")} />
-        </span>
-        <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">{modelLabel(model)}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-          {streaming ? (
-            <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
-              <Loader2 className="size-3 animate-spin" /> running…
-            </span>
-          ) : (
-            <>
-              {results.length} variant{results.length === 1 ? "" : "s"}
-            </>
-          )}
-        </span>
-      </button>
-
-      {!collapsed && (
-        <div className="flex flex-col gap-1.5 p-2.5">
-          {streaming && liveDeltas.length === 0 && <StreamingRow />}
-          {streaming &&
-            liveDeltas.map(([idx, text]) => (
-              <div
-                key={idx}
-                className="rounded-[10px] border border-border bg-card px-3 py-2.5 text-[12.5px] leading-snug"
-              >
-                {text}
-                <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/60 align-text-bottom" />
-              </div>
-            ))}
-          {results.map((r) => (
-            <ResultRow key={r.id} result={r} scriptId={scriptId} onLayoutChange={onLayoutChange} />
-          ))}
-          {!streaming && results.length === 0 && (
-            <div className="flex flex-col items-center gap-2 px-2 py-3 text-center">
-              <p className="text-[11.5px] text-faint">
-                {failed
-                  ? rateLimited
-                    ? "Provider rate-limited (free tier)."
-                    : "Generation failed."
-                  : "No results."}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={retry}
-                disabled={regen.isPending}
-                className="h-7 gap-1.5 px-2.5 text-[11.5px]"
-              >
-                <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
-                Try again
-              </Button>
-            </div>
-          )}
-          {!streaming && failed && results.length > 0 && (
-            <button
-              onClick={retry}
-              disabled={regen.isPending}
-              className="flex items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border-strong px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-60"
-            >
-              <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
-              Retry — partial result
-            </button>
-          )}
+    <div className="flex flex-col gap-1.5">
+      {streaming && liveDeltas.length === 0 && <StreamingRow />}
+      {streaming &&
+        liveDeltas.map(([idx, text]) => (
+          <div
+            key={idx}
+            className="rounded-[10px] border border-border bg-card px-3 py-2.5 text-[12.5px] leading-snug"
+          >
+            {text}
+            <span className="ml-0.5 inline-block h-3 w-1 animate-pulse bg-foreground/60 align-text-bottom" />
+          </div>
+        ))}
+      {results.map((r) => (
+        <ResultRow key={r.id} result={r} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+      ))}
+      {!streaming && results.length === 0 && (
+        <div className="flex flex-col items-center gap-2 px-2 py-3 text-center">
+          <p className="text-[11.5px] text-faint">
+            {failed
+              ? rateLimited
+                ? "Provider rate-limited (free tier)."
+                : "Generation failed."
+              : "No results."}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={retry}
+            disabled={regen.isPending}
+            className="h-7 gap-1.5 px-2.5 text-[11.5px]"
+          >
+            <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+            Try again
+          </Button>
         </div>
+      )}
+      {!streaming && failed && results.length > 0 && (
+        <button
+          onClick={retry}
+          disabled={regen.isPending}
+          className="flex items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border-strong px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-60"
+        >
+          <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+          Retry — partial result
+        </button>
       )}
     </div>
   );
