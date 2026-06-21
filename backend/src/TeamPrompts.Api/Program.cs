@@ -76,6 +76,7 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IGenerationNotifier, SignalRGenerationNotifier>();
 builder.Services.AddSingleton<IJobScheduler, HangfireJobScheduler>();
 builder.Services.AddTransient<GenerationJob>();
+builder.Services.AddTransient<RetentionJob>();
 
 // Startup check: warn (don't crash) if the configured default model isn't in OpenRouter's /models.
 builder.Services.AddHostedService<ModelValidationHostedService>();
@@ -132,5 +133,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 // ---- Migrate + seed on startup ----
 await DataSeeder.SeedAsync(app.Services, config["Seed:AdminEmail"] ?? "", config["Seed:AdminPassword"] ?? "");
+
+// ---- Recurring: prune activity events past the 90-day retention window, daily ----
+RecurringJob.AddOrUpdate<RetentionJob>("activity-retention", j => j.RunAsync(CancellationToken.None), Cron.Daily());
 
 app.Run();
