@@ -17,6 +17,7 @@ export * from './fileType';
 export * from './generationResultDto';
 export * from './generationRunDto';
 export * from './getApiActivityParams';
+export * from './getApiActivityUsersUserIdProfileParams';
 export * from './getApiScriptsParams';
 export * from './loginRequest';
 export * from './modelDto';

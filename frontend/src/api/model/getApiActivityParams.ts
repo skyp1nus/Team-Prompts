@@ -11,4 +11,5 @@ skip?: number;
 take?: number;
 userId?: string;
 type?: ActivityEventType;
+days?: number;
 };
