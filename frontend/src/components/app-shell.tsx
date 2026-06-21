@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, LogOut, ScrollText, Settings, Users } from "lucide-react";
+import { ChevronDown, LogOut, ScrollText, Settings, UserCircle, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostApiAuthLogout } from "@/api/endpoints/auth/auth";
@@ -24,7 +24,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { initials } from "@/lib/format";
 
 export function AppShell() {
-  const { user, isAdmin } = useAuth();
+  const { user, isOwner, isAdmin, isPrivileged } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
   const logout = usePostApiAuthLogout();
@@ -72,7 +72,7 @@ export function AppShell() {
             </Avatar>
             <span className="flex flex-col text-left leading-tight">
               <span className="text-[12.5px] font-medium">{user?.displayName}</span>
-              <span className="text-[10.5px] text-faint">{isAdmin ? "Admin" : "Member"}</span>
+              <span className="text-[10.5px] text-faint">{isOwner ? "Owner" : isAdmin ? "Admin" : "Member"}</span>
             </span>
             <ChevronDown className="size-3 text-faint" />
           </DropdownMenuTrigger>
@@ -88,12 +88,19 @@ export function AppShell() {
               <DropdownMenuLabel className="text-[10px] font-semibold tracking-wide text-faint uppercase">
                 Manage
               </DropdownMenuLabel>
-              <DropdownMenuItem render={<Link href="/teams" />}>
-                <Users className="mr-2 size-4" /> Teams
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/activity" />}>
-                <ScrollText className="mr-2 size-4" /> Activity Log
-              </DropdownMenuItem>
+              {isPrivileged && (
+                <>
+                  <DropdownMenuItem render={<Link href={`/users/${user?.id}`} />}>
+                    <UserCircle className="mr-2 size-4" /> My profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/teams" />}>
+                    <Users className="mr-2 size-4" /> Team &amp; Access
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/activity" />}>
+                    <ScrollText className="mr-2 size-4" /> Activity Log
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem render={<Link href="/settings" />}>
                 <Settings className="mr-2 size-4" /> Settings
               </DropdownMenuItem>

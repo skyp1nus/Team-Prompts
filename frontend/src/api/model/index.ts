@@ -5,6 +5,10 @@
  * OpenAPI spec version: 1.0.0
  */
 
+export * from './activityEventDto';
+export * from './activityEventType';
+export * from './activityFeedDto';
+export * from './activityTargetType';
 export * from './createGenerationRequest';
 export * from './createPromptRequest';
 export * from './createUserRequest';
@@ -12,6 +16,7 @@ export * from './createVersionRequest';
 export * from './fileType';
 export * from './generationResultDto';
 export * from './generationRunDto';
+export * from './getApiActivityParams';
 export * from './getApiScriptsParams';
 export * from './loginRequest';
 export * from './modelDto';
@@ -32,5 +37,7 @@ export * from './settingsDto';
 export * from './trayItemDto';
 export * from './updatePromptRequest';
 export * from './updateScriptRequest';
+export * from './userAggregatesDto';
 export * from './userDto';
+export * from './userProfileDto';
 export * from './userRef';

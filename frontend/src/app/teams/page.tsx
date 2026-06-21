@@ -131,17 +131,19 @@ function UserRow({ user }: { user: UserDto }) {
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-center gap-3">
+        <Link href={`/users/${user.id}`} className="group/u flex items-center gap-3">
           <Avatar className="size-8">
             <AvatarFallback className="bg-accent text-[11px] text-muted-foreground">
               {initials(user.displayName || user.email)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-medium">{user.displayName || "—"}</div>
+            <div className="truncate text-[13.5px] font-medium group-hover/u:text-primary group-hover/u:underline">
+              {user.displayName || "—"}
+            </div>
             <div className="truncate text-xs text-faint">{user.email}</div>
           </div>
-        </div>
+        </Link>
       </TableCell>
       <TableCell>
         <Badge
