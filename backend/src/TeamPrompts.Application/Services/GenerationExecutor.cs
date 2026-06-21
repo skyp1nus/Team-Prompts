@@ -38,8 +38,7 @@ public sealed class GenerationExecutor(
             await db.SaveChangesAsync(ct);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Streaming), null, ct);
 
-            var n = GenerationDefaults.VariantCount;
-            var messages = BuildMessages(n, session.PromptVersion.Content, session.Script.ExtractedText);
+            var messages = BuildMessages(session.PromptVersion.Content, session.Script.ExtractedText);
 
             // ONE completion. Stream the raw text live into the first slot so the user sees progress.
             var sb = new StringBuilder();
@@ -50,8 +49,9 @@ public sealed class GenerationExecutor(
                 await notifier.ResultDelta(scriptId, sessionId, 0, delta, ct);
             }
 
-            // Split the single response into N clean, de-duplicated options (one per card).
-            var options = SplitOptions(sb.ToString(), n);
+            // Split the response into clean, de-duplicated options — the prompt decides how many,
+            // bounded by a safety cap.
+            var options = SplitOptions(sb.ToString(), GenerationDefaults.MaxVariantCount);
             if (options.Count == 0)
             {
                 var whole = sb.ToString().Trim();
@@ -94,7 +94,7 @@ public sealed class GenerationExecutor(
     /// editable prompt is a pure brief. A power-user may still place it inline via a {{script}}
     /// token — in that case it is substituted there and NOT duplicated into the system context.
     /// </summary>
-    private static List<OpenRouterMessage> BuildMessages(int n, string promptContent, string script)
+    private static List<OpenRouterMessage> BuildMessages(string promptContent, string script)
     {
         var prompt = promptContent ?? string.Empty;
         script ??= string.Empty;
@@ -103,7 +103,7 @@ public sealed class GenerationExecutor(
         {
             return
             [
-                new("system", GenerationDefaults.SystemGuardrail(n)),
+                new("system", GenerationDefaults.SystemGuardrail()),
                 new("user", ScriptToken.Replace(prompt, script)),
             ];
         }
@@ -111,7 +111,7 @@ public sealed class GenerationExecutor(
         var brief = prompt.Trim().Length == 0 ? "Generate the options now." : prompt;
         return
         [
-            new("system", $"{GenerationDefaults.SystemGuardrail(n)}\n\n{GenerationDefaults.ScriptBlock(script)}"),
+            new("system", $"{GenerationDefaults.SystemGuardrail()}\n\n{GenerationDefaults.ScriptBlock(script)}"),
             new("user", brief),
         ];
     }

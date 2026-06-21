@@ -3,8 +3,11 @@ namespace TeamPrompts.Application.Common;
 /// <summary>Defaults for the generation flow.</summary>
 public static class GenerationDefaults
 {
-    /// <summary>Options produced per session (spec: ~4–6). One completion yields this many distinct lines.</summary>
+    /// <summary>How many options to produce when the prompt doesn't ask for a specific number.</summary>
     public const int VariantCount = 5;
+
+    /// <summary>Hard upper bound on options parsed from one completion (safety cap, prompt-driven below).</summary>
+    public const int MaxVariantCount = 20;
 
     /// <summary>Sampling temperature — kept high to diversify the options within the single completion.</summary>
     public const double Temperature = 0.9;
@@ -12,19 +15,18 @@ public static class GenerationDefaults
     public const string FallbackModel = "openai/gpt-5";
 
     /// <summary>
-    /// Always-on output-hygiene system message, prepended to every generation regardless of the
-    /// user's editable prompt. Guarantees plain-text, de-listed, fixed-count output so the UI can
-    /// split one completion into clean individual cards. Format rules here override the task prompt.
+    /// Always-on output-hygiene system message, prepended to every generation. It enforces FORMAT
+    /// (plain text, one option per line, no markdown) but lets the task prompt decide HOW MANY
+    /// options to produce, defaulting to <see cref="VariantCount"/> when unspecified.
     /// </summary>
-    public static string SystemGuardrail(int count) =>
+    public static string SystemGuardrail() =>
         $"""
-        You generate YouTube video metadata from a script. Follow these OUTPUT rules exactly — they
-        override anything stated in the task below:
-        - Produce EXACTLY {count} options, each on its own single line.
-        - If the task asks for a different quantity, ignore that and produce exactly {count}.
-        - Plain text ONLY. No Markdown, no asterisks (**), no backticks, no headings, no bold/italics.
+        You generate YouTube video metadata from a script. Follow these OUTPUT rules exactly:
+        - Produce the number of options the task asks for. If it doesn't specify, give about {VariantCount}.
+        - One option per line. Plain text ONLY — no Markdown, no asterisks (**), no backticks, no
+          headings, no bold or italics.
         - No numbering, no bullets, no leading symbols, no surrounding quotes, no labels.
-        - No preamble, no commentary, no trailing notes. Output only the {count} lines, nothing else.
+        - No preamble, no commentary, no trailing notes. Output only the option lines.
         - Each line is one complete, self-contained option that stands on its own.
         """;
 
