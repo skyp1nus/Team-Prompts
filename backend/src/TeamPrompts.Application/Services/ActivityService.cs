@@ -9,14 +9,19 @@ namespace TeamPrompts.Application.Services;
 
 public interface IActivityService
 {
-    Task<ActivityFeedDto> GetFeedAsync(int skip, int take, string? userId, ActivityEventType? type, CancellationToken ct = default);
-    Task<UserAggregatesDto> GetUserAggregatesAsync(string userId, CancellationToken ct = default);
+    Task<ActivityFeedDto> GetFeedAsync(
+        int skip, int take, string? userId, ActivityEventType? type, DateTimeOffset? since, CancellationToken ct = default);
+    Task<UserAggregatesDto> GetUserAggregatesAsync(string userId, DateTimeOffset? since, CancellationToken ct = default);
+
+    /// <summary>Retention purge — bulk-deletes events older than the cutoff. Bypasses the per-row
+    /// immutability guard (that blocks user/app deletes); this is a system-level prune.</summary>
+    Task<int> PurgeOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct = default);
 }
 
 public sealed class ActivityService(IAppDbContext db, IUserDirectory users) : IActivityService
 {
     public async Task<ActivityFeedDto> GetFeedAsync(
-        int skip, int take, string? userId, ActivityEventType? type, CancellationToken ct = default)
+        int skip, int take, string? userId, ActivityEventType? type, DateTimeOffset? since, CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 100);
         skip = Math.Max(0, skip);
@@ -24,6 +29,7 @@ public sealed class ActivityService(IAppDbContext db, IUserDirectory users) : IA
         var q = db.ActivityEvents.AsNoTracking();
         if (!string.IsNullOrEmpty(userId)) q = q.Where(e => e.ActorUserId == userId);
         if (type is not null) q = q.Where(e => e.Type == type);
+        if (since is not null) q = q.Where(e => e.CreatedAt >= since);
 
         var rows = await q
             .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id)
@@ -39,9 +45,10 @@ public sealed class ActivityService(IAppDbContext db, IUserDirectory users) : IA
         return new ActivityFeedDto(rows.Select(r => Map(r, dir)).ToList(), hasMore);
     }
 
-    public async Task<UserAggregatesDto> GetUserAggregatesAsync(string userId, CancellationToken ct = default)
+    public async Task<UserAggregatesDto> GetUserAggregatesAsync(string userId, DateTimeOffset? since, CancellationToken ct = default)
     {
         var mine = db.ActivityEvents.AsNoTracking().Where(e => e.ActorUserId == userId);
+        if (since is not null) mine = mine.Where(e => e.CreatedAt >= since);
         var completed = mine.Where(e => e.Type == ActivityEventType.GenerationCompleted);
 
         return new UserAggregatesDto(
@@ -54,6 +61,9 @@ public sealed class ActivityService(IAppDbContext db, IUserDirectory users) : IA
             LastActiveAt: await mine.OrderByDescending(e => e.CreatedAt)
                 .Select(e => (DateTimeOffset?)e.CreatedAt).FirstOrDefaultAsync(ct));
     }
+
+    public Task<int> PurgeOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct = default) =>
+        db.ActivityEvents.Where(e => e.CreatedAt < cutoff).ExecuteDeleteAsync(ct);
 
     private static ActivityEventDto Map(ActivityEvent e, IReadOnlyDictionary<string, UserRef> dir) =>
         new(e.Id, e.Type, e.ActorUserId is null ? null : Attribution.Of(dir, e.ActorUserId),

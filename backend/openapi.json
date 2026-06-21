@@ -59,6 +59,14 @@
             "schema": {
               "$ref": "#/components/schemas/ActivityEventType"
             }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -97,6 +105,14 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32"
             }
           }
         ],
