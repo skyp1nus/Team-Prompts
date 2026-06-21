@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDeleteApiPromptsId, useGetApiPrompts } from "@/api/endpoints/prompts/prompts";
 import type { PromptListItemDto } from "@/api/model";
@@ -17,9 +17,14 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function PromptsPanel() {
   const qc = useQueryClient();
   const { data: prompts, isLoading } = useGetApiPrompts();
-  const { selectedPromptIds, togglePrompt } = useWorkspace();
+  const { selectedPromptIds, togglePrompt, prunePrompts } = useWorkspace();
   const del = useDeleteApiPromptsId();
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
+
+  // Self-heal a persisted selection: drop any prompt id that no longer exists.
+  useEffect(() => {
+    if (prompts) prunePrompts(prompts.map((p) => p.id));
+  }, [prompts, prunePrompts]);
 
   const onDelete = (id: string, name: string) => {
     if (!confirm(`Delete prompt "${name}"?`)) return;
