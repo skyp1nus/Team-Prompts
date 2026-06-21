@@ -22,6 +22,7 @@ import type {
 import type {
   ActivityFeedDto,
   GetApiActivityParams,
+  GetApiActivityUsersUserIdProfileParams,
   UserProfileDto
 } from '../../model';
 
@@ -137,12 +138,14 @@ export function useGetApiActivity<TData = Awaited<ReturnType<typeof getApiActivi
 
 export const getApiActivityUsersUserIdProfile = (
     userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
 
 
       return customInstance<UserProfileDto>(
-      {url: `/api/activity/users/${userId}/profile`, method: 'GET', signal
+      {url: `/api/activity/users/${userId}/profile`, method: 'GET',
+        params, signal
     },
       options);
     }
@@ -150,23 +153,25 @@ export const getApiActivityUsersUserIdProfile = (
 
 
 
-export const getGetApiActivityUsersUserIdProfileQueryKey = (userId: string,) => {
+export const getGetApiActivityUsersUserIdProfileQueryKey = (userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams,) => {
     return [
-    `/api/activity/users/${userId}/profile`
+    `/api/activity/users/${userId}/profile`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetApiActivityUsersUserIdProfileQueryOptions = <TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(userId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+export const getGetApiActivityUsersUserIdProfileQueryOptions = <TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetApiActivityUsersUserIdProfileQueryKey(userId);
+  const queryKey =  queryOptions?.queryKey ?? getGetApiActivityUsersUserIdProfileQueryKey(userId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>> = ({ signal }) => getApiActivityUsersUserIdProfile(userId, requestOptions, signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>> = ({ signal }) => getApiActivityUsersUserIdProfile(userId,params, requestOptions, signal);
 
 
 
@@ -180,7 +185,8 @@ export type GetApiActivityUsersUserIdProfileQueryError = ErrorType<unknown>
 
 
 export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(
- userId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>> & Pick<
+ userId: string,
+    params: undefined |  GetApiActivityUsersUserIdProfileParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>,
           TError,
@@ -190,7 +196,8 @@ export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<t
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(
- userId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>> & Pick<
+ userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>,
           TError,
@@ -200,16 +207,18 @@ export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<t
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(
- userId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 
 export function useGetApiActivityUsersUserIdProfile<TData = Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError = ErrorType<unknown>>(
- userId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ userId: string,
+    params?: GetApiActivityUsersUserIdProfileParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiActivityUsersUserIdProfile>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetApiActivityUsersUserIdProfileQueryOptions(userId,options)
+  const queryOptions = getGetApiActivityUsersUserIdProfileQueryOptions(userId,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
