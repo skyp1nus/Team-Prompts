@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Dtos;
+using TeamPrompts.Domain.Enums;
 using TeamPrompts.Infrastructure.Identity;
 
 namespace TeamPrompts.Api.Controllers;
@@ -9,7 +11,7 @@ namespace TeamPrompts.Api.Controllers;
 [ApiController]
 [Route("api/users")]
 [Authorize(Policy = "Admin")]
-public sealed class UsersController(UserManager<AppUser> userManager) : ControllerBase
+public sealed class UsersController(UserManager<AppUser> userManager, IActivityLogger activity) : ControllerBase
 {
     /// <summary>Admin-only: create an account directly (no email invite flow).</summary>
     [HttpPost]
@@ -41,6 +43,12 @@ public sealed class UsersController(UserManager<AppUser> userManager) : Controll
         }
 
         await userManager.AddToRoleAsync(user, req.Role);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.UserCreated,
+            TargetType: ActivityTargetType.User, TargetUserId: user.Id,
+            Summary: $"Created user {user.DisplayName} ({req.Role})"));
+
         return new UserDto(user.Id, user.Email!, user.DisplayName, [req.Role]);
     }
 
@@ -52,5 +60,14 @@ public sealed class UsersController(UserManager<AppUser> userManager) : Controll
         foreach (var u in users)
             result.Add(new UserDto(u.Id, u.Email ?? string.Empty, u.DisplayName, (await userManager.GetRolesAsync(u)).ToList()));
         return result;
+    }
+
+    /// <summary>Owner/Admin: fetch one user (for their profile page).</summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<UserDto>> Get(string id)
+    {
+        var u = await userManager.FindByIdAsync(id);
+        if (u is null) return NotFound();
+        return new UserDto(u.Id, u.Email ?? string.Empty, u.DisplayName, (await userManager.GetRolesAsync(u)).ToList());
     }
 }

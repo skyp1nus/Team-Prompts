@@ -22,7 +22,8 @@ public sealed class ScriptService(
     IFileStorage files,
     ITextExtractor extractor,
     ICurrentUser currentUser,
-    IUserDirectory users) : IScriptService
+    IUserDirectory users,
+    IActivityLogger activity) : IScriptService
 {
     public async Task<IReadOnlyList<ScriptListItemDto>> ListAsync(string? search, CancellationToken ct = default)
     {
@@ -89,6 +90,11 @@ public sealed class ScriptService(
         db.Scripts.Add(script);
         await db.SaveChangesAsync(ct);
 
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.ScriptUploaded,
+            TargetType: ActivityTargetType.Script, TargetId: script.Id,
+            Summary: $"Uploaded \"{script.Name}\""), ct);
+
         return (await GetAsync(script.Id, ct))!;
     }
 
@@ -107,7 +113,13 @@ public sealed class ScriptService(
                 ?? throw new NotFoundException("Script not found.");
         if (s.StorageKey is not null)
             await files.DeleteAsync(s.StorageKey, ct);
+        var name = s.Name;
         db.Scripts.Remove(s);
         await db.SaveChangesAsync(ct);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.ScriptDeleted,
+            TargetType: ActivityTargetType.Script, TargetId: id,
+            Summary: $"Deleted script \"{name}\""), ct);
     }
 }

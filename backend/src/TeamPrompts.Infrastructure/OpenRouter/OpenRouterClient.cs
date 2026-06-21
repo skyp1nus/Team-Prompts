@@ -22,7 +22,7 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
     /// line; only a genuinely silent connection trips it. Not a total cap — a long stream runs freely.</summary>
     private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(90);
 
-    public async IAsyncEnumerable<string> StreamChatAsync(
+    public async IAsyncEnumerable<OpenRouterStreamEvent> StreamChatAsync(
         OpenRouterChatRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var apiKey = await GetApiKeyAsync(ct);
@@ -33,6 +33,7 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
             messages = request.Messages.Select(m => new { role = m.Role, content = m.Content }),
             stream = true,
             temperature = request.Temperature,
+            usage = new { include = true }, // ask OpenRouter to send token+cost usage in the final chunk
         };
 
         using var msg = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
@@ -83,9 +84,9 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
             if (data == "[DONE]")
                 yield break;
 
-            var token = ParseDelta(data);
-            if (!string.IsNullOrEmpty(token))
-                yield return token;
+            var ev = ParseEvent(data);
+            if (ev is not null)
+                yield return ev;
         }
     }
 
@@ -130,18 +131,34 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
             && d == 0;
     }
 
-    private static string? ParseDelta(string data)
+    private static OpenRouterStreamEvent? ParseEvent(string data)
     {
         try
         {
             using var doc = JsonDocument.Parse(data);
-            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-                return null;
-            var choice = choices[0];
-            if (choice.TryGetProperty("delta", out var delta)
+            var root = doc.RootElement;
+
+            // The terminal usage chunk carries token counts + cost (and no content delta).
+            if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+            {
+                var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                return new UsageInfo(
+                    id,
+                    ReadDecimal(usage, "cost"),
+                    ReadInt(usage, "prompt_tokens"),
+                    ReadInt(usage, "completion_tokens"),
+                    ReadInt(usage, "total_tokens"));
+            }
+
+            if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0
+                && choices[0].TryGetProperty("delta", out var delta)
                 && delta.TryGetProperty("content", out var content)
                 && content.ValueKind == JsonValueKind.String)
-                return content.GetString();
+            {
+                var text = content.GetString();
+                return string.IsNullOrEmpty(text) ? null : new ContentDelta(text);
+            }
+
             return null;
         }
         catch (JsonException)
@@ -150,6 +167,26 @@ public sealed class OpenRouterClient(HttpClient http, IHttpClientFactory httpFac
             return null;
         }
     }
+
+    private static decimal ReadDecimal(JsonElement obj, string key) =>
+        obj.TryGetProperty(key, out var v)
+            ? v.ValueKind switch
+            {
+                JsonValueKind.Number => v.GetDecimal(),
+                JsonValueKind.String when decimal.TryParse(v.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d) => d,
+                _ => 0m,
+            }
+            : 0m;
+
+    private static int ReadInt(JsonElement obj, string key) =>
+        obj.TryGetProperty(key, out var v)
+            ? v.ValueKind switch
+            {
+                JsonValueKind.Number => v.GetInt32(),
+                JsonValueKind.String when int.TryParse(v.GetString(), out var i) => i,
+                _ => 0,
+            }
+            : 0;
 
     private async Task<string> GetApiKeyAsync(CancellationToken ct)
     {

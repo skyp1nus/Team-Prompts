@@ -39,3 +39,36 @@ public enum ResultKind
     Tags = 3,
     Thumbnail = 4,
 }
+
+/// <summary>Kind of action captured in the immutable activity log.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ActivityEventType
+{
+    UserLoggedIn = 0,
+    UserCreated = 1,
+    ScriptUploaded = 2,
+    ScriptDeleted = 3,
+    PromptCreated = 4,
+    PromptDeleted = 5,
+    PromptVersionCreated = 6,
+    PromptVersionPromoted = 7,
+    GenerationStarted = 8,
+    GenerationCompleted = 9,
+    GenerationFailed = 10,
+    ResultCopied = 11,
+    ResultFavorited = 12,
+    ResultUnfavorited = 13,
+}
+
+/// <summary>The entity an activity event points at, for click-through in the feed.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ActivityTargetType
+{
+    Script = 0,
+    Prompt = 1,
+    PromptVersion = 2,
+    GenerationRun = 3,
+    GenerationSession = 4,
+    GenerationResult = 5,
+    User = 6,
+}

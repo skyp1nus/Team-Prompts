@@ -3,6 +3,7 @@ using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Common;
 using TeamPrompts.Application.Dtos;
 using TeamPrompts.Domain.Entities;
+using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Application.Services;
 
@@ -20,7 +21,8 @@ public interface IPromptService
 public sealed class PromptService(
     IAppDbContext db,
     ICurrentUser currentUser,
-    IUserDirectory users) : IPromptService
+    IUserDirectory users,
+    IActivityLogger activity) : IPromptService
 {
     public async Task<IReadOnlyList<PromptListItemDto>> ListAsync(CancellationToken ct = default)
     {
@@ -79,6 +81,11 @@ public sealed class PromptService(
         prompt.MainVersionId = version.Id;
         await db.SaveChangesAsync(ct);
 
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.PromptCreated,
+            TargetType: ActivityTargetType.Prompt, TargetId: prompt.Id,
+            Summary: $"Created prompt \"{prompt.Name}\""), ct);
+
         return (await GetAsync(prompt.Id, ct))!;
     }
 
@@ -96,10 +103,16 @@ public sealed class PromptService(
         var prompt = await db.Prompts.FirstOrDefaultAsync(p => p.Id == id, ct)
                      ?? throw new NotFoundException("Prompt not found.");
         // Break the Main pointer first so cascade-delete of versions has no dangling FK.
+        var name = prompt.Name;
         prompt.MainVersionId = null;
         await db.SaveChangesAsync(ct);
         db.Prompts.Remove(prompt);
         await db.SaveChangesAsync(ct);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.PromptDeleted,
+            TargetType: ActivityTargetType.Prompt, TargetId: id,
+            Summary: $"Deleted prompt \"{name}\""), ct);
     }
 
     public async Task<PromptVersionDto> CreateVersionAsync(Guid promptId, CreateVersionRequest req, CancellationToken ct = default)
@@ -125,6 +138,11 @@ public sealed class PromptService(
         prompt.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
 
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.PromptVersionCreated,
+            TargetType: ActivityTargetType.Prompt, TargetId: promptId,
+            Summary: $"Added a version to \"{prompt.Name}\""), ct);
+
         var dir = await users.GetAsync([version.AuthorUserId], ct);
         return new PromptVersionDto(version.Id, promptId, version.ParentVersionId, version.Content,
             Attribution.Of(dir, version.AuthorUserId), version.Note, version.IsMain, version.CreatedAt);
@@ -143,6 +161,11 @@ public sealed class PromptService(
             v.IsMain = v.Id == versionId;
         prompt.MainVersionId = target.Id;
         await db.SaveChangesAsync(ct);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.PromptVersionPromoted,
+            TargetType: ActivityTargetType.Prompt, TargetId: promptId,
+            Summary: $"Promoted a version of \"{prompt.Name}\""), ct);
 
         return (await GetAsync(promptId, ct))!;
     }

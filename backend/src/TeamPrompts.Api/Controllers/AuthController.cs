@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Dtos;
+using TeamPrompts.Domain.Enums;
 using TeamPrompts.Infrastructure.Identity;
 
 namespace TeamPrompts.Api.Controllers;
@@ -9,7 +11,10 @@ namespace TeamPrompts.Api.Controllers;
 [ApiController]
 [Route("api/auth")]
 [Authorize]
-public sealed class AuthController(SignInManager<AppUser> signInManager, UserManager<AppUser> userManager) : ControllerBase
+public sealed class AuthController(
+    SignInManager<AppUser> signInManager,
+    UserManager<AppUser> userManager,
+    IActivityLogger activity) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
@@ -22,6 +27,9 @@ public sealed class AuthController(SignInManager<AppUser> signInManager, UserMan
         var result = await signInManager.PasswordSignInAsync(user, req.Password, isPersistent: true, lockoutOnFailure: false);
         if (!result.Succeeded)
             return Unauthorized();
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.UserLoggedIn, ActorUserId: user.Id, Summary: "Signed in"));
 
         return await ToDto(user);
     }

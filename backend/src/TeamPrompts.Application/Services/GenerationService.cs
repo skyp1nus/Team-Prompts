@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Common;
@@ -22,7 +23,8 @@ public sealed class GenerationService(
     IAppDbContext db,
     ICurrentUser currentUser,
     IUserDirectory users,
-    IJobScheduler scheduler) : IGenerationService
+    IJobScheduler scheduler,
+    IActivityLogger activity) : IGenerationService
 {
     public async Task<GenerationRunDto> CreateAsync(CreateGenerationRequest req, CancellationToken ct = default)
     {
@@ -75,6 +77,14 @@ public sealed class GenerationService(
 
         foreach (var s in sessions)
             scheduler.EnqueueGeneration(s.Id);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.GenerationStarted,
+            TargetType: run is not null ? ActivityTargetType.GenerationRun : ActivityTargetType.GenerationSession,
+            TargetId: run?.Id ?? sessions[0].Id,
+            Summary: $"Started {sessions.Count} generation{(sessions.Count == 1 ? "" : "s")} with {model}",
+            Model: model,
+            Metadata: JsonSerializer.Serialize(new { scriptIds, promptIds, model, sessionCount = sessions.Count })), ct);
 
         var dtos = await BuildSessionDtos(sessions.Select(s => s.Id).ToList(), ct);
         return new GenerationRunDto(run?.Id, dtos);
@@ -147,11 +157,19 @@ public sealed class GenerationService(
         {
             db.ResultFavorites.Add(new ResultFavorite { GenerationResultId = resultId, UserId = userId });
             await db.SaveChangesAsync(ct);
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.ResultFavorited,
+                TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
+                Summary: "Saved a result to the tray"), ct);
         }
         else if (!on && fav is not null)
         {
             db.ResultFavorites.Remove(fav);
             await db.SaveChangesAsync(ct);
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.ResultUnfavorited,
+                TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
+                Summary: "Removed a result from the tray"), ct);
         }
         return on;
     }
@@ -164,6 +182,10 @@ public sealed class GenerationService(
 
         db.ResultCopyEvents.Add(new ResultCopyEvent { GenerationResultId = resultId, UserId = userId });
         await db.SaveChangesAsync(ct);
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.ResultCopied,
+            TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
+            Summary: "Copied a generated result"), ct);
     }
 
     public async Task<IReadOnlyList<TrayItemDto>> GetTrayAsync(Guid scriptId, CancellationToken ct = default)

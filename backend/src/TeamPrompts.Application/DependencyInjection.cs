@@ -16,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<IGenerationService, GenerationService>();
         services.AddScoped<IGenerationExecutor, GenerationExecutor>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<IActivityLogger, ActivityLogger>();
+        services.AddScoped<IActivityService, ActivityService>();
 
         return services;
     }
