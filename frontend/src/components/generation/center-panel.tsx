@@ -167,31 +167,28 @@ function CenterEmpty({ title, body }: { title: string; body: string }) {
 }
 
 function groupByPrompt(sessions: SessionWithResultsDto[]): Group[] {
-  // Stable layout: positions are fixed by FIRST appearance (oldest-first), so re-generating a
-  // model just refreshes its card in place instead of shuffling prompts/models around. The API
-  // returns sessions newest-first, so we iterate oldest-first and let a newer run overwrite its
-  // existing (prompt, model) slot — same position, newest content.
+  // Keep EVERY run — the map groups them by model into one block so each "Generate more" shows as a
+  // separate, labelled generation. Order is stable: prompts and models by first appearance, runs
+  // chronological, so positions never shuffle when a new run lands.
   const ordered = [...sessions].sort(
     (a, b) => +new Date(a.session.createdAt) - +new Date(b.session.createdAt),
   );
   const groups: Group[] = [];
   const groupIndex = new Map<string, number>();
-  const modelSlot = new Map<string, number>(); // `${promptId}|${model}` -> index in group.sessions
+  const modelBuckets = new Map<string, Map<string, SessionWithResultsDto[]>>(); // pid -> model -> runs
   for (const s of ordered) {
     const pid = s.session.promptId;
     if (!groupIndex.has(pid)) {
       groupIndex.set(pid, groups.length);
       groups.push({ promptId: pid, promptName: s.session.promptName, sessions: [] });
+      modelBuckets.set(pid, new Map());
     }
-    const g = groups[groupIndex.get(pid)!];
-    const key = `${pid}|${s.session.model}`;
-    const slot = modelSlot.get(key);
-    if (slot === undefined) {
-      modelSlot.set(key, g.sessions.length);
-      g.sessions.push(s);
-    } else {
-      g.sessions[slot] = s; // newer run for an existing model — keep its position
-    }
+    const models = modelBuckets.get(pid)!;
+    if (!models.has(s.session.model)) models.set(s.session.model, []);
+    models.get(s.session.model)!.push(s);
+  }
+  for (const [pid, idx] of groupIndex) {
+    groups[idx].sessions = [...modelBuckets.get(pid)!.values()].flat();
   }
   return groups;
 }
