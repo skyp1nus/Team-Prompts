@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TeamPrompts.Application.Abstractions;
@@ -17,7 +18,8 @@ namespace TeamPrompts.Application.Services;
 public sealed class GenerationExecutor(
     IAppDbContext db,
     IOpenRouterClient openRouter,
-    IGenerationNotifier notifier) : IGenerationExecutor
+    IGenerationNotifier notifier,
+    IActivityLogger activity) : IGenerationExecutor
 {
     private static readonly Regex ListMarker = new(@"^\s*(\d+[\.\)]|[-*•‣·])\s+", RegexOptions.Compiled);
     private static readonly Regex ScriptToken = new(@"\{\{\s*script\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -26,10 +28,13 @@ public sealed class GenerationExecutor(
     {
         var session = await db.GenerationSessions
             .Include(s => s.Script)
+            .Include(s => s.Prompt)
             .Include(s => s.PromptVersion)
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
         if (session is null || session.Script is null || session.PromptVersion is null)
             return;
+
+        var promptName = session.Prompt?.Name ?? "prompt";
 
         var scriptId = session.ScriptId;
         try
@@ -42,11 +47,26 @@ public sealed class GenerationExecutor(
 
             // ONE completion. Stream the raw text live into the first slot so the user sees progress.
             var sb = new StringBuilder();
+            decimal? costUsd = null;
+            int? promptTokens = null, completionTokens = null, totalTokens = null;
+            string? generationId = null;
             var request = new OpenRouterChatRequest(session.Model, messages, GenerationDefaults.Temperature);
-            await foreach (var delta in openRouter.StreamChatAsync(request, ct))
+            await foreach (var ev in openRouter.StreamChatAsync(request, ct))
             {
-                sb.Append(delta);
-                await notifier.ResultDelta(scriptId, sessionId, 0, delta, ct);
+                switch (ev)
+                {
+                    case ContentDelta d:
+                        sb.Append(d.Text);
+                        await notifier.ResultDelta(scriptId, sessionId, 0, d.Text, ct);
+                        break;
+                    case UsageInfo u:
+                        costUsd = u.Cost;
+                        promptTokens = u.PromptTokens;
+                        completionTokens = u.CompletionTokens;
+                        totalTokens = u.TotalTokens;
+                        generationId = u.GenerationId;
+                        break;
+                }
             }
 
             // Split the response into clean, de-duplicated options — the prompt decides how many,
@@ -79,6 +99,25 @@ public sealed class GenerationExecutor(
             await db.SaveChangesAsync(ct);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Completed), null, ct);
             await notifier.SessionCompleted(scriptId, sessionId, ct);
+
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.GenerationCompleted,
+                ActorUserId: session.CreatedByUserId,
+                TargetType: ActivityTargetType.GenerationSession,
+                TargetId: sessionId,
+                Summary: $"Generated {options.Count} option{(options.Count == 1 ? "" : "s")} for \"{promptName}\" with {session.Model}",
+                Model: session.Model,
+                PromptTokens: promptTokens,
+                CompletionTokens: completionTokens,
+                TotalTokens: totalTokens,
+                CostUsd: costUsd,
+                Metadata: JsonSerializer.Serialize(new
+                {
+                    scriptId = session.ScriptId,
+                    promptId = session.PromptId,
+                    resultCount = options.Count,
+                    generationId,
+                })), CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -86,6 +125,15 @@ public sealed class GenerationExecutor(
             session.Error = ex.Message;
             await db.SaveChangesAsync(CancellationToken.None);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Failed), ex.Message, CancellationToken.None);
+
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.GenerationFailed,
+                ActorUserId: session.CreatedByUserId,
+                TargetType: ActivityTargetType.GenerationSession,
+                TargetId: sessionId,
+                Summary: $"Generation failed for \"{promptName}\" with {session.Model}",
+                Model: session.Model,
+                Metadata: JsonSerializer.Serialize(new { error = ex.Message })), CancellationToken.None);
         }
     }
 

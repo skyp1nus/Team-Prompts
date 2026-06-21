@@ -14,6 +14,7 @@ public interface IAppDbContext
     DbSet<GenerationResult> GenerationResults { get; }
     DbSet<ResultFavorite> ResultFavorites { get; }
     DbSet<ResultCopyEvent> ResultCopyEvents { get; }
+    DbSet<ActivityEvent> ActivityEvents { get; }
     DbSet<AppSettings> AppSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);

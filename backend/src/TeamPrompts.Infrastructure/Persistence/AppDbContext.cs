@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<GenerationResult> GenerationResults => Set<GenerationResult>();
     public DbSet<ResultFavorite> ResultFavorites => Set<ResultFavorite>();
     public DbSet<ResultCopyEvent> ResultCopyEvents => Set<ResultCopyEvent>();
+    public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
 
@@ -141,18 +142,44 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             e.Property(x => x.DefaultModel).HasMaxLength(200);
         });
+
+        b.Entity<ActivityEvent>(e =>
+        {
+            e.Property(x => x.ActorUserId).HasMaxLength(450);
+            e.Property(x => x.TargetUserId).HasMaxLength(450);
+            e.Property(x => x.Summary).HasMaxLength(1000);
+            e.Property(x => x.Model).HasMaxLength(200);
+            e.Property(x => x.CostUsd).HasColumnType("numeric(12,6)");
+            e.Property(x => x.Metadata).HasColumnType("jsonb");
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => x.ActorUserId);
+            e.HasIndex(x => x.Type);
+            e.HasIndex(x => new { x.TargetType, x.TargetId });
+        });
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        GuardActivityImmutability();
         StampTimestamps();
         return base.SaveChangesAsync(cancellationToken);
     }
 
     public override int SaveChanges()
     {
+        GuardActivityImmutability();
         StampTimestamps();
         return base.SaveChanges();
+    }
+
+    /// <summary>Activity log is append-only — reject any update or delete of a persisted event.</summary>
+    private void GuardActivityImmutability()
+    {
+        foreach (var entry in ChangeTracker.Entries<ActivityEvent>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Activity log entries are immutable and cannot be modified or deleted.");
+        }
     }
 
     /// <summary>Auto-stamps CreatedAt (on insert) and UpdatedAt (on insert/update) where those props exist.</summary>

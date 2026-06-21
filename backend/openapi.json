@@ -22,6 +22,108 @@
         }
       }
     },
+    "/api/activity": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "format": "int32",
+              "default": 30
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ActivityEventType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityFeedDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityFeedDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityFeedDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/activity/users/{userId}/profile": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -1279,10 +1381,189 @@
           }
         }
       }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActivityEventDto": {
+        "required": [
+          "id",
+          "type",
+          "actor",
+          "createdAt",
+          "summary",
+          "targetType",
+          "targetId",
+          "targetUserId",
+          "model",
+          "promptTokens",
+          "completionTokens",
+          "totalTokens",
+          "costUsd",
+          "metadata"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ActivityEventType"
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/UserRef"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetType": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/ActivityTargetType"
+              }
+            ]
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "targetUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "promptTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32",
+            "nullable": true
+          },
+          "completionTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32",
+            "nullable": true
+          },
+          "costUsd": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "format": "double",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "string"
+          }
+        }
+      },
+      "ActivityEventType": {
+        "enum": [
+          "UserLoggedIn",
+          "UserCreated",
+          "ScriptUploaded",
+          "ScriptDeleted",
+          "PromptCreated",
+          "PromptDeleted",
+          "PromptVersionCreated",
+          "PromptVersionPromoted",
+          "GenerationStarted",
+          "GenerationCompleted",
+          "GenerationFailed",
+          "ResultCopied",
+          "ResultFavorited",
+          "ResultUnfavorited"
+        ]
+      },
+      "ActivityFeedDto": {
+        "required": [
+          "items",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityEventDto"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityTargetType": {
+        "enum": [
+          "Script",
+          "Prompt",
+          "PromptVersion",
+          "GenerationRun",
+          "GenerationSession",
+          "GenerationResult",
+          "User",
+          null
+        ]
+      },
       "CreateGenerationRequest": {
         "required": [
           "scriptIds",
@@ -1946,6 +2227,49 @@
           }
         }
       },
+      "UserAggregatesDto": {
+        "required": [
+          "totalCostUsd",
+          "totalTokens",
+          "generationCount",
+          "failedCount",
+          "copyCount",
+          "favoriteCount",
+          "lastActiveAt"
+        ],
+        "type": "object",
+        "properties": {
+          "totalCostUsd": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "format": "double"
+          },
+          "totalTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "generationCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "failedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "copyCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "favoriteCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "lastActiveAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
       "UserDto": {
         "required": [
           "id",
@@ -1968,6 +2292,35 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "UserProfileDto": {
+        "required": [
+          "user",
+          "roles",
+          "stats",
+          "recentActivity"
+        ],
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stats": {
+            "$ref": "#/components/schemas/UserAggregatesDto"
+          },
+          "recentActivity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityEventDto"
             }
           }
         }
@@ -1996,6 +2349,9 @@
   "tags": [
     {
       "name": "TeamPrompts.Api"
+    },
+    {
+      "name": "Activity"
     },
     {
       "name": "Auth"

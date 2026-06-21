@@ -69,3 +69,20 @@ public sealed record SettingsDto(
     IReadOnlyList<string> FavoriteModels, IReadOnlyList<ModelDto> AvailableModels);
 public sealed record SetApiKeyRequest(string ApiKey);
 public sealed record SetFavoriteModelsRequest(IReadOnlyList<string> Models);
+
+// ---- Activity log & profiles ----
+public sealed record ActivityEventDto(
+    Guid Id, ActivityEventType Type, UserRef? Actor, DateTimeOffset CreatedAt, string? Summary,
+    ActivityTargetType? TargetType, Guid? TargetId, string? TargetUserId,
+    string? Model, int? PromptTokens, int? CompletionTokens, int? TotalTokens, decimal? CostUsd,
+    string Metadata);
+
+public sealed record ActivityFeedDto(IReadOnlyList<ActivityEventDto> Items, bool HasMore);
+
+public sealed record UserAggregatesDto(
+    decimal TotalCostUsd, int TotalTokens, int GenerationCount, int FailedCount,
+    int CopyCount, int FavoriteCount, DateTimeOffset? LastActiveAt);
+
+public sealed record UserProfileDto(
+    UserRef User, IReadOnlyList<string> Roles, UserAggregatesDto Stats,
+    IReadOnlyList<ActivityEventDto> RecentActivity);
