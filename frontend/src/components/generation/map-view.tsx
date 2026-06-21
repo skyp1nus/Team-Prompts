@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronRight,
+  Copy,
   FileText,
   Loader2,
   Maximize2,
@@ -30,7 +31,7 @@ import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto } f
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { Button } from "@/components/ui/button";
 import { formatRelative, modelLabel } from "@/lib/format";
-import { providerDot } from "@/lib/models";
+import { providerDot, providerOf } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ type Edge = {
   key: string;
   promptId: string;
   colId: string;
+  color: string;
   ax: number;
   ay: number;
   bx: number;
@@ -54,6 +56,11 @@ type Edge = {
   d: string;
 };
 
+/**
+ * Node-flow map (design "Team Prompts - Map (shadcn)"). Each prompt is a lane that flows
+ * left → right: the prompt node on the left, one output node per model on the right, joined by
+ * provider-coloured bezier edges from the prompt card's right edge to each output card's left edge.
+ */
 export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: string }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +69,6 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   const panningRef = useRef(false);
 
   const [t, setT] = useState<Transform>({ z: 0.8, tx: 40, ty: 28 });
-  const [collapsedPrompts, setCollapsedPrompts] = useState<Set<string>>(new Set());
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [sizeTick, setSizeTick] = useState(0);
   const [hover, setHover] = useState<Hover>(null);
@@ -73,15 +79,6 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     tRef.current = t;
   }, [t]);
   const bumpLayout = useCallback(() => setLayoutVersion((v) => v + 1), []);
-
-  const togglePromptCollapse = (id: string) => {
-    setCollapsedPrompts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const zoomAt = useCallback((nz: number, px: number, py: number) => {
     setT((p) => {
@@ -101,7 +98,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         const r = vp.getBoundingClientRect();
-        zoomAt(tRef.current.z * Math.exp(-e.deltaY * 0.005), e.clientX - r.left, e.clientY - r.top);
+        zoomAt(tRef.current.z * Math.exp(-e.deltaY * 0.0016), e.clientX - r.left, e.clientY - r.top);
       } else {
         setT((p) => ({ ...p, tx: p.tx - e.deltaX, ty: p.ty - e.deltaY }));
       }
@@ -183,7 +180,8 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     requestAnimationFrame(initFit);
   }, [groups.length, initFit]);
 
-  /* recompute edges only on layout / collapse / resize — NOT on pan/zoom */
+  /* recompute edges only on layout / resize — NOT on pan/zoom. Edges run horizontally from each
+     prompt card's right-middle to each output card's left-middle. */
   useLayoutEffect(() => {
     const layer = layerRef.current;
     if (!layer) {
@@ -194,35 +192,39 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     const base = layer.getBoundingClientRect();
     const next: Edge[] = [];
     layer.querySelectorAll<HTMLElement>("[data-prompt]").forEach((pr) => {
-      if (pr.dataset.collapsed === "true") return;
       const pid = pr.dataset.prompt!;
-      const rr = pr.getBoundingClientRect();
-      const ax = (rr.left + rr.width / 2 - base.left) / z;
-      const ay = (rr.bottom - base.top) / z;
-      layer.querySelectorAll<HTMLElement>(`[data-col-parent="${pid}"]`).forEach((col) => {
-        const cid = col.dataset.col!;
-        const cr = col.getBoundingClientRect();
-        const bx = (cr.left + cr.width / 2 - base.left) / z;
-        const by = (cr.top - base.top) / z;
-        const my = ay + (by - ay) * 0.5;
+      const card = pr.querySelector<HTMLElement>("[data-card]");
+      if (!card) return;
+      const rr = card.getBoundingClientRect();
+      const ax = (rr.right - base.left) / z;
+      const ay = (rr.top + rr.height / 2 - base.top) / z;
+      layer.querySelectorAll<HTMLElement>(`[data-col-parent="${pid}"]`).forEach((out) => {
+        const cid = out.dataset.col!;
+        const oc = out.querySelector<HTMLElement>("[data-card]");
+        if (!oc) return;
+        const cr = oc.getBoundingClientRect();
+        const bx = (cr.left - base.left) / z;
+        const by = (cr.top + cr.height / 2 - base.top) / z;
+        const dx = Math.max(60, (bx - ax) * 0.5);
         next.push({
           key: `${pid}__${cid}`,
           promptId: pid,
           colId: cid,
+          color: out.dataset.ec || "var(--border-strong)",
           ax,
           ay,
           bx,
           by,
-          d: `M${ax} ${ay} C${ax} ${my} ${bx} ${my} ${bx} ${by}`,
+          d: `M${ax} ${ay} C${ax + dx} ${ay} ${bx - dx} ${by} ${bx} ${by}`,
         });
       });
     });
     setEdges(next);
     setSvg({ w: layer.scrollWidth, h: layer.scrollHeight });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, collapsedPrompts, layoutVersion, sizeTick]);
+  }, [groups, layoutVersion, sizeTick]);
 
-  /* resize → re-fit on first layout + recompute edges */
+  /* resize → recompute edges */
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
@@ -244,7 +246,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     >
       <div
         ref={layerRef}
-        className="absolute top-0 left-0 w-max origin-top-left will-change-transform"
+        className="absolute top-0 left-0 w-max origin-top-left px-14 py-3.5 will-change-transform"
         style={{ transform: `translate(${t.tx}px, ${t.ty}px) scale(${t.z})` }}
       >
         <svg
@@ -255,63 +257,63 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
             const hot =
               (hover?.type === "col" && hover.id === e.colId) ||
               (hover?.type === "prompt" && hover.id === e.promptId);
-            const stroke = hot ? "var(--primary)" : "var(--border-strong)";
             return (
-              <g key={e.key} style={{ opacity: dim && !hot ? 0.16 : 1, transition: "opacity .16s" }}>
-                <path d={e.d} fill="none" stroke={stroke} strokeWidth={hot ? 2.5 : 1.5} strokeLinecap="round" />
-                <circle cx={e.ax} cy={e.ay} r={3.2} fill={stroke} />
-                <circle cx={e.bx} cy={e.by} r={3} fill={stroke} />
+              <g key={e.key} style={{ opacity: dim && !hot ? 0.18 : 1, transition: "opacity .16s" }}>
+                <path
+                  d={e.d}
+                  fill="none"
+                  stroke={e.color}
+                  strokeWidth={hot ? 3 : 2}
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-width .16s" }}
+                />
+                <circle cx={e.ax} cy={e.ay} r={hot ? 4.5 : 3.4} fill={e.color} />
+                <circle cx={e.bx} cy={e.by} r={hot ? 4.5 : 3.4} fill={e.color} />
               </g>
             );
           })}
         </svg>
 
-        <div className="relative flex w-max flex-col gap-12" style={{ zIndex: 1 }}>
+        <div className="relative flex w-max flex-col gap-16" style={{ zIndex: 1 }}>
           {groups.map((g) => {
-            const collapsed = collapsedPrompts.has(g.promptId);
             const promptLit =
               (hover?.type === "prompt" && hover.id === g.promptId) ||
               (hover?.type === "col" && (hover.id ?? "").startsWith(`${g.promptId}::`));
             return (
-              <div key={g.promptId} className="flex w-max flex-col items-center">
+              <div key={g.promptId} className="relative flex w-max items-start gap-[132px]">
                 <PromptNode
                   group={g}
                   scriptId={scriptId}
-                  collapsed={collapsed}
                   lit={promptLit}
-                  onToggleCollapse={() => togglePromptCollapse(g.promptId)}
                   onHover={(h) => {
                     if (panningRef.current) return;
                     setHover(h ? { type: "prompt", id: g.promptId } : null);
                   }}
-                  onLayoutChange={bumpLayout}
                 />
-                {!collapsed && (
-                  <div className="relative flex items-start gap-6" style={{ zIndex: 1 }}>
-                    {groupModels(g.sessions).map((mg) => {
-                      const colId = `${g.promptId}::${mg.model}`;
-                      return (
-                        <ModelColumn
-                          key={colId}
-                          colId={colId}
-                          model={mg.model}
-                          runs={mg.runs}
-                          promptId={g.promptId}
-                          scriptId={scriptId}
-                          lit={
-                            (hover?.type === "col" && hover.id === colId) ||
-                            (hover?.type === "prompt" && hover.id === g.promptId)
-                          }
-                          onHover={(h) => {
-                            if (panningRef.current) return;
-                            setHover(h ? { type: "col", id: colId } : null);
-                          }}
-                          onLayoutChange={bumpLayout}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="flex flex-col gap-[34px]">
+                  {groupModels(g.sessions).map((mg) => {
+                    const colId = `${g.promptId}::${mg.model}`;
+                    return (
+                      <OutputNode
+                        key={colId}
+                        colId={colId}
+                        model={mg.model}
+                        runs={mg.runs}
+                        promptId={g.promptId}
+                        scriptId={scriptId}
+                        lit={
+                          (hover?.type === "col" && hover.id === colId) ||
+                          (hover?.type === "prompt" && hover.id === g.promptId)
+                        }
+                        onHover={(h) => {
+                          if (panningRef.current) return;
+                          setHover(h ? { type: "col", id: colId } : null);
+                        }}
+                        onLayoutChange={bumpLayout}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -364,22 +366,17 @@ function ZoomBtn({
 }
 
 /* ============================ PROMPT NODE ============================ */
+/** Left side of a lane: the prompt, with a "Generate" run across every model + add-model menu. */
 function PromptNode({
   group,
   scriptId,
-  collapsed,
   lit,
-  onToggleCollapse,
   onHover,
-  onLayoutChange,
 }: {
   group: Group;
   scriptId: string;
-  collapsed: boolean;
   lit: boolean;
-  onToggleCollapse: () => void;
   onHover: (hovering: boolean) => void;
-  onLayoutChange: () => void;
 }) {
   const qc = useQueryClient();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
@@ -418,74 +415,68 @@ function PromptNode({
     <div
       data-node
       data-prompt={group.promptId}
-      data-collapsed={collapsed}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      className={cn(
-        "relative z-[2] w-[312px] rounded-2xl border border-border bg-card px-4 pt-3.5 pb-3 shadow-md transition-[box-shadow,border-color]",
-        collapsed ? "mb-2" : "mb-12",
-        lit && "border-primary",
-      )}
+      className="relative z-[2] w-[360px] shrink-0"
     >
-      <div className="flex items-center gap-2.5">
-        <button
-          onClick={() => {
-            onToggleCollapse();
-            onLayoutChange();
-          }}
-          className="flex size-[22px] shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label={collapsed ? "Expand" : "Collapse"}
-        >
-          <ChevronRight className={cn("size-4 transition-transform", !collapsed && "rotate-90")} />
-        </button>
-        <div className="flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.08] text-primary">
-          <FileText className="size-[15px]" />
-        </div>
-        <button
-          onClick={() => {
-            onToggleCollapse();
-            onLayoutChange();
-          }}
-          className="min-w-0 flex-1 text-left"
-        >
-          <div className="eyebrow !text-[9px] tracking-[0.09em]">Prompt</div>
-          <div className="truncate text-[15px] leading-tight font-[650] tracking-tight">
-            {group.promptName}
+      {/* fn-card — prompt body */}
+      <div
+        data-card
+        className={cn(
+          "relative rounded-[13px] border border-border bg-card shadow-md transition-[box-shadow,border-color]",
+          lit && "border-border-strong shadow-lg",
+        )}
+      >
+        <div className="relative min-h-[104px] px-4 pt-3.5 pb-[52px]">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.08] text-primary">
+              <FileText className="size-[15px]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="eyebrow !text-[9px] tracking-[0.09em]">Prompt</div>
+              <div className="truncate text-[15px] leading-tight font-[650] tracking-tight">
+                {group.promptName}
+              </div>
+            </div>
           </div>
-        </button>
+          <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
+            <b className="font-bold text-foreground tabular-nums">{modelCount}</b> model
+            {modelCount === 1 ? "" : "s"} ·{" "}
+            <b className="font-bold text-foreground tabular-nums">{total}</b> result{total === 1 ? "" : "s"}
+          </p>
+
+          {/* run button pinned bottom-right (design .fn-run) */}
+          <button
+            onClick={regenMore}
+            disabled={regen.isPending}
+            className="absolute right-3 bottom-3 flex h-[29px] items-center gap-1.5 rounded-lg bg-primary pr-2.5 pl-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {regen.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            Generate
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-[11.5px] text-muted-foreground">
-        <span>
-          <b className="font-bold text-foreground tabular-nums">{modelCount}</b> model
-          {modelCount === 1 ? "" : "s"}
+      {/* fn-bar — detached footer toolbar */}
+      <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
+        <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
+          <FileText className="size-3.5 shrink-0 text-faint" />
+          <span className="truncate">{modelCount} model{modelCount === 1 ? "" : "s"}</span>
         </span>
-        <span className="size-[3px] rounded-full bg-faint" />
-        <span>
-          <b className="font-bold text-foreground tabular-nums">{total}</b> result{total === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      <div className="mt-3 flex items-center gap-2">
-        <Button
-          size="sm"
-          onClick={regenMore}
-          disabled={regen.isPending}
-          className="h-8 flex-1 gap-1.5 rounded-lg text-[11.5px] font-semibold"
-        >
-          <Sparkles className="size-3.5" /> Generate more
-        </Button>
-        <AddModelMenu
-          onPick={addModel}
-          existing={group.sessions.map((s) => s.session.model)}
-          disabled={regen.isPending}
-        />
+        <span className="flex-1" />
+        <div className="flex w-[112px]">
+          <AddModelMenu
+            onPick={addModel}
+            existing={group.sessions.map((s) => s.session.model)}
+            disabled={regen.isPending}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-/* ============================ MODEL COLUMN ============================ */
+/* ============================ OUTPUT NODE ============================ */
 /** Buckets a prompt group's sessions into one entry per model, in first-appearance order. */
 function groupModels(sessions: SessionWithResultsDto[]): { model: string; runs: SessionWithResultsDto[] }[] {
   const map = new Map<string, SessionWithResultsDto[]>();
@@ -496,8 +487,8 @@ function groupModels(sessions: SessionWithResultsDto[]): { model: string; runs: 
   return [...map.entries()].map(([model, runs]) => ({ model, runs }));
 }
 
-/** One card per model. Each "Generate more" run shows inside, divided + labelled, newest first. */
-function ModelColumn({
+/** Right side of a lane: one card per model. Each "Generate" adds a fresh run inside, newest first. */
+function OutputNode({
   colId,
   model,
   runs,
@@ -519,7 +510,8 @@ function ModelColumn({
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
-  const [collapsed, setCollapsed] = useState(false);
+  const copyEvent = usePostApiResultsResultIdCopy();
+  const [copied, setCopied] = useState(false);
   const dot = providerDot(model);
 
   const ordered = [...runs].sort(
@@ -542,99 +534,112 @@ function ModelColumn({
     );
     toast.success("Generating…");
   };
+
   const isActive = (r: SessionWithResultsDto) => {
     const st = (live[r.session.id]?.status ?? r.session.status) as string;
     return st === SessionStatus.Streaming || st === SessionStatus.Queued;
   };
   // Show every run that has results, plus active runs. A failed/empty run is only shown when it's
   // the very latest attempt — so repeated rate-limited retries don't stack identical blocks.
-  const displayed = ordered.filter(
-    (run, i) => run.results.length > 0 || isActive(run) || i === 0,
-  );
+  const displayed = ordered.filter((run, i) => run.results.length > 0 || isActive(run) || i === 0);
   const anyStreaming = ordered.some(isActive);
   // The newest run already shows its own "Try again" when it failed/emptied — so don't double up
   // with the header's generate button in that case.
   const newestFailed = !!ordered[0] && !isActive(ordered[0]) && ordered[0].results.length === 0;
+
+  // Best result to copy from the bar = first favourite, else the newest run's first result.
+  const best =
+    ordered.flatMap((r) => r.results).find((r) => r.isFavorite) ?? ordered[0]?.results[0] ?? null;
+
+  const copyBest = async () => {
+    if (!best) return;
+    try {
+      await navigator.clipboard.writeText(best.content);
+    } catch {
+      toast.error("Couldn’t copy to clipboard");
+      return;
+    }
+    copyEvent.mutate({ resultId: best.id });
+    setCopied(true);
+    toast.success("Copied");
+    window.setTimeout(() => setCopied(false), 1400);
+  };
 
   return (
     <div
       data-node
       data-col-parent={promptId}
       data-col={colId}
+      data-ec={dot}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      className={cn(
-        "w-[288px] shrink-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-[box-shadow,border-color] hover:shadow-md",
-        lit && "border-primary shadow-md",
-      )}
+      className="relative z-[2] w-[360px] shrink-0"
     >
+      {/* fn-card — results body */}
       <div
+        data-card
         className={cn(
-          "flex w-full items-center bg-background",
-          !collapsed && "border-b border-border",
+          "rounded-[13px] border border-border bg-card shadow-md transition-[box-shadow,border-color]",
+          lit && "border-border-strong shadow-lg",
         )}
       >
-        <button
-          onClick={() => {
-            setCollapsed((c) => !c);
-            onLayoutChange();
-          }}
-          className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-2 pl-3.5 text-left transition-colors hover:bg-accent"
-        >
-          <span className="flex size-[18px] shrink-0 items-center justify-center text-muted-foreground">
-            <ChevronRight className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")} />
-          </span>
-          <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
-          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">{modelLabel(model)}</span>
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-            {anyStreaming ? (
-              <span className="inline-flex items-center gap-1.5 font-semibold text-primary">
-                <Loader2 className="size-3 animate-spin" /> running…
-              </span>
-            ) : (
-              <>
-                {displayed.length} run{displayed.length === 1 ? "" : "s"}
-              </>
-            )}
-          </span>
-        </button>
+        <div className="flex flex-col gap-1.5 p-2.5">
+          {displayed.map((run, i) => (
+            <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
+              {displayed.length > 1 && (
+                <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] text-faint">
+                  <span className="font-semibold tracking-wide uppercase">
+                    {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
+                  </span>
+                  <span>{formatRelative(run.session.createdAt)}</span>
+                </div>
+              )}
+              <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* fn-bar — model + actions */}
+      <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
+        <span className="flex min-w-0 items-center gap-2 px-1.5 text-[12px] font-medium">
+          <span className="size-[7px] shrink-0 rounded-full" style={{ background: dot }} />
+          <span className="min-w-0 truncate">{modelLabel(model)}</span>
+          <span className="shrink-0 text-[10px] text-faint">{providerOf(model)}</span>
+        </span>
+        <span className="flex-1" />
+        {best && (
+          <button
+            onClick={copyBest}
+            title="Copy best result"
+            aria-label="Copy best result"
+            className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {copied ? <Check className="size-3.5 text-primary" /> : <Copy className="size-3.5" />}
+          </button>
+        )}
         {!newestFailed && (
           <button
             onClick={generateMore}
             disabled={regen.isPending || anyStreaming}
             title="Generate more"
             aria-label="Generate more"
-            className="mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-primary px-2.5 text-[11.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
           >
-            {regen.isPending ? (
+            {anyStreaming || regen.isPending ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
               <Sparkles className="size-3.5" />
             )}
+            {anyStreaming ? "Running" : "Generate"}
           </button>
         )}
       </div>
-
-      {!collapsed && (
-        <div className="flex flex-col">
-          {displayed.map((run, i) => (
-            <div key={run.session.id} className={cn("p-2.5", i > 0 && "border-t border-border")}>
-              <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] text-faint">
-                <span className="font-semibold tracking-wide uppercase">
-                  {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
-                </span>
-                <span>{formatRelative(run.session.createdAt)}</span>
-              </div>
-              <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-/** One generation run inside a model card: its live stream, results, or failed state + retry. */
+/** One generation run inside an output card: its live stream, results, or failed state + retry. */
 function RunBlock({
   run,
   scriptId,
@@ -785,17 +790,27 @@ function ResultRow({
       )}
     >
       <div
-        className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5"
+        className={cn(
+          "flex cursor-pointer gap-2.5 px-2.5 py-2",
+          open ? "items-start" : "items-center",
+        )}
         onClick={() => {
           setOpen((o) => !o);
           onLayoutChange();
         }}
       >
-        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] leading-snug font-medium">
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            open && "mt-[3px] rotate-90",
+          )}
+        />
+        <span className={cn("min-w-0 flex-1 text-[12.5px] leading-snug font-medium", !open && "truncate")}>
           {result.content}
         </span>
-        <span className="shrink-0 text-[10px] text-faint tabular-nums">{result.content.length}</span>
+        <span className={cn("shrink-0 text-[10px] text-faint tabular-nums", open && "mt-[3px]")}>
+          {result.content.length}
+        </span>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -804,6 +819,7 @@ function ResultRow({
           title={isFav ? "Remove from tray" : "Add to tray"}
           className={cn(
             "flex size-[22px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px] text-[13px] font-semibold transition-colors",
+            open && "-mt-[1px]",
             isFav
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border-strong text-faint hover:border-primary hover:text-primary",
@@ -814,8 +830,7 @@ function ResultRow({
       </div>
       {open && (
         <div className="animate-rise pr-3 pb-3 pl-9">
-          <p className="text-[12px] leading-relaxed whitespace-pre-wrap text-muted-foreground">{result.content}</p>
-          <div className="mt-2.5 flex items-center gap-3 text-[10.5px] text-faint">
+          <div className="flex items-center gap-3 text-[10.5px] text-faint">
             <span>{result.content.length} chars</span>
             {result.favoriteCount > 0 && <span>★ {result.favoriteCount}</span>}
             {result.copyCount > 0 && <span>copied {result.copyCount}</span>}
