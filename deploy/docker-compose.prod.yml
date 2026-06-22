@@ -1,0 +1,74 @@
+name: team-prompts
+
+# ── Team Prompts PRODUCTION stack ────────────────────────────────────────────
+# Owns NO infrastructure: Postgres + Caddy live in the shared /opt/shared stack on
+# the Hetzner host. Both services join the pre-created external "web" network and
+# reach the shared Postgres by its network alias (postgres). The shared Caddy fronts
+# TLS + routing (see deploy/team-prompts.caddy). No Redis: Hangfire runs on Postgres.
+#
+# Container names are PINNED so the shared Caddy upstreams stay stable across
+# redeploys — service names alone collide on the shared "web" network.
+#
+# No host ports are published: nothing is reachable except through the shared Caddy.
+# All secrets come from /opt/team-prompts/.env (see deploy/.env.prod.example).
+#
+# To smoke-test the prod compose on a laptop, layer deploy/local/* (builds images
+# locally + supplies a throwaway postgres + caddy). For the server it's GHCR pull.
+
+services:
+  api:
+    image: ghcr.io/${GH_REPO:-skyp1nus/team-prompts}/api:${IMAGE_TAG:-latest}
+    container_name: team-prompts-api-1
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_gcServer: "0"                       # workstation GC: lower idle RSS inside the 640m cap
+
+      # Shared Postgres (alias "postgres" on the "web" network). Password must equal
+      # the role password created in the shared Postgres (see deploy/README.md).
+      # Hangfire uses this same database (its own schema) — no Redis needed.
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+
+      # First-run seed admin (created only when there is no user yet).
+      Seed__AdminEmail: ${Seed__AdminEmail:-admin@teamprompts.local}
+      Seed__AdminPassword: ${Seed__AdminPassword}
+
+      # Data Protection key ring (encrypts the OpenRouter API key + auth cookie).
+      # Persisted to the dpkeys volume below — NEVER wipe it or every stored secret
+      # + every active login cookie becomes undecryptable.
+      DataProtection__KeyRingPath: /keys
+
+      # OpenRouter base URL only. The API KEY is set write-only via the Settings UI
+      # (encrypted at rest with the Data Protection key ring) — never an env var.
+      OpenRouter__BaseUrl: ${OpenRouter__BaseUrl:-https://openrouter.ai/api/v1}
+
+      # Same-origin behind the shared Caddy; set so SignalR negotiate (withCredentials)
+      # from the public origin is allowed.
+      Cors__AllowedOrigins: ${App__PublicBaseUrl}
+    volumes:
+      - dpkeys:/keys
+    mem_limit: 640m
+    networks: [web]
+
+  web:
+    image: ghcr.io/${GH_REPO:-skyp1nus/team-prompts}/web:${IMAGE_TAG:-latest}
+    container_name: team-prompts-web-1
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # NOTE: NEXT_PUBLIC_API_BASE_URL is inlined at BUILD time (empty = same origin
+      # behind Caddy; OpenAPI paths already include /api). A runtime value cannot
+      # override the inlined one — it is baked in the CI image build, not set here.
+    mem_limit: 320m
+    networks: [web]
+
+networks:
+  web:
+    external: true
+
+volumes:
+  dpkeys:
