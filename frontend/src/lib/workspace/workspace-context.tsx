@@ -31,6 +31,10 @@ type WorkspaceValue = {
   /** Center view mode (Columns / Grid / Map). */
   view: CenterView;
   setView: (v: CenterView) => void;
+
+  /** When on, the center emphasizes team highlights and dims everything else. */
+  showHighlightsOnly: boolean;
+  setShowHighlightsOnly: (v: boolean) => void;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -72,6 +76,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [batchScriptIds, setBatchScriptIds] = usePersistedState<string[]>("tp.ws.batchScripts", []);
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
+  const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
 
   const togglePrompt = useCallback(
     (id: string) =>
@@ -126,6 +131,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setRunModels,
         view,
         setView,
+        showHighlightsOnly,
+        setShowHighlightsOnly,
       }}
     >
       {children}

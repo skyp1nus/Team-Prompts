@@ -49,7 +49,8 @@ public sealed record SessionDto(
 
 public sealed record GenerationResultDto(
     Guid Id, Guid SessionId, int Index, string Content, ResultKind? Kind,
-    DateTimeOffset CreatedAt, bool IsFavorite, int FavoriteCount, int CopyCount);
+    DateTimeOffset CreatedAt, bool IsFavorite, int FavoriteCount, int CopyCount,
+    bool IsHighlighted, UserRef? HighlightedBy, DateTimeOffset? HighlightedAt);
 
 public sealed record SessionWithResultsDto(SessionDto Session, IReadOnlyList<GenerationResultDto> Results);
 

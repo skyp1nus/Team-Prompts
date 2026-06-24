@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Columns3, LayoutGrid, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
+import { Columns3, Heart, LayoutGrid, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
@@ -37,6 +37,8 @@ export function CenterPanel() {
     runModels,
     view,
     setView,
+    showHighlightsOnly,
+    setShowHighlightsOnly,
   } = useWorkspace();
   const { subscribeScript } = useGenerationStream();
   const gen = usePostApiGeneration();
@@ -107,8 +109,27 @@ export function CenterPanel() {
     <section className="flex h-full min-w-0 flex-col bg-muted">
       {/* center-head */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-2.5 border-b border-border bg-background px-5 py-3">
-        {/* left: clear the whole canvas */}
-        <div className="flex min-w-0 flex-1 items-center">
+        {/* left: highlights filter + clear the whole canvas */}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {hasResults && (
+            <button
+              onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
+              title={
+                showHighlightsOnly
+                  ? "Showing only highlights — click to show every result"
+                  : "Spotlight the team’s highlights and dim the rest"
+              }
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12.5px] font-medium transition-colors",
+                showHighlightsOnly
+                  ? "border-rose-400/60 bg-rose-500/10 text-rose-600"
+                  : "border-border text-muted-foreground hover:border-rose-400/50 hover:text-rose-600",
+              )}
+            >
+              <Heart className={cn("size-3.5", showHighlightsOnly && "fill-current")} />
+              Highlights
+            </button>
+          )}
           {hasResults && (
             <button
               onClick={onClearCanvas}

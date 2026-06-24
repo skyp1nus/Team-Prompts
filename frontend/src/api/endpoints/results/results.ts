@@ -187,3 +187,113 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getPostApiResultsResultIdCopyMutationOptions(options), queryClient);
     }
+    export const postApiResultsResultIdHighlight = (
+    resultId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<boolean>(
+      {url: `/api/results/${resultId}/highlight`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getPostApiResultsResultIdHighlightMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext> => {
+
+const mutationKey = ['postApiResultsResultIdHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>, {resultId: string}> = (props) => {
+          const {resultId} = props ?? {};
+
+          return  postApiResultsResultIdHighlight(resultId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiResultsResultIdHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>>
+
+    export type PostApiResultsResultIdHighlightMutationError = ErrorType<unknown>
+
+    export const usePostApiResultsResultIdHighlight = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiResultsResultIdHighlight>>,
+        TError,
+        {resultId: string},
+        TContext
+      > => {
+      return useMutation(getPostApiResultsResultIdHighlightMutationOptions(options), queryClient);
+    }
+    export const deleteApiResultsResultIdHighlight = (
+    resultId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<boolean>(
+      {url: `/api/results/${resultId}/highlight`, method: 'DELETE', signal
+    },
+      options);
+    }
+
+
+
+export const getDeleteApiResultsResultIdHighlightMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext> => {
+
+const mutationKey = ['deleteApiResultsResultIdHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>, {resultId: string}> = (props) => {
+          const {resultId} = props ?? {};
+
+          return  deleteApiResultsResultIdHighlight(resultId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiResultsResultIdHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>>
+
+    export type DeleteApiResultsResultIdHighlightMutationError = ErrorType<unknown>
+
+    export const useDeleteApiResultsResultIdHighlight = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiResultsResultIdHighlight>>,
+        TError,
+        {resultId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiResultsResultIdHighlightMutationOptions(options), queryClient);
+    }

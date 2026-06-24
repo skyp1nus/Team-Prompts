@@ -26,4 +26,6 @@ export const ActivityEventType = {
   GenerationSessionDeleted: 'GenerationSessionDeleted',
   GenerationRunDeleted: 'GenerationRunDeleted',
   ScriptGenerationsCleared: 'ScriptGenerationsCleared',
+  ResultHighlighted: 'ResultHighlighted',
+  ResultUnhighlighted: 'ResultUnhighlighted',
 } as const;

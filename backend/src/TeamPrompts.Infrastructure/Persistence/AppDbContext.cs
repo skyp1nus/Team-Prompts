@@ -102,6 +102,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         b.Entity<GenerationResult>(e =>
         {
             e.Property(x => x.Content).IsRequired();
+            e.Property(x => x.HighlightedByUserId).HasMaxLength(450);
             e.HasIndex(x => x.SessionId);
 
             e.HasOne(x => x.Session)

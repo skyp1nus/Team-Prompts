@@ -20,6 +20,15 @@ public class GenerationResult
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>Team-wide "this one is great" mark. Shared (not per-user): anyone toggles it, everyone sees it.</summary>
+    public bool IsHighlighted { get; set; }
+
+    /// <summary>Who last set the highlight; null when not highlighted. Attribution only — not an ownership gate.</summary>
+    public string? HighlightedByUserId { get; set; }
+
+    /// <summary>When the highlight was last set; null when not highlighted.</summary>
+    public DateTimeOffset? HighlightedAt { get; set; }
+
     public ICollection<ResultFavorite> Favorites { get; set; } = new List<ResultFavorite>();
     public ICollection<ResultCopyEvent> CopyEvents { get; set; } = new List<ResultCopyEvent>();
 }
