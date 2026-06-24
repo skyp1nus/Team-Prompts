@@ -14,6 +14,7 @@ public interface IAppDbContext
     DbSet<GenerationResult> GenerationResults { get; }
     DbSet<ResultFavorite> ResultFavorites { get; }
     DbSet<ResultCopyEvent> ResultCopyEvents { get; }
+    DbSet<CanvasNode> CanvasNodes { get; }
     DbSet<ActivityEvent> ActivityEvents { get; }
     DbSet<AppSettings> AppSettings { get; }
 

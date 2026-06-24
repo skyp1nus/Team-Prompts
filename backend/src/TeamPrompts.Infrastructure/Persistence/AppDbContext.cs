@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<GenerationResult> GenerationResults => Set<GenerationResult>();
     public DbSet<ResultFavorite> ResultFavorites => Set<ResultFavorite>();
     public DbSet<ResultCopyEvent> ResultCopyEvents => Set<ResultCopyEvent>();
+    public DbSet<CanvasNode> CanvasNodes => Set<CanvasNode>();
     public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
@@ -130,6 +131,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasOne(x => x.GenerationResult)
                 .WithMany(r => r.CopyEvents)
                 .HasForeignKey(x => x.GenerationResultId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CanvasNode>(e =>
+        {
+            e.Property(x => x.NodeKey).HasMaxLength(200).IsRequired();
+            e.Property(x => x.UpdatedByUserId).HasMaxLength(450);
+            // One stored position per (script, block). Upserts target this key.
+            e.HasIndex(x => new { x.ScriptId, x.NodeKey }).IsUnique();
+
+            e.HasOne(x => x.Script)
+                .WithMany()
+                .HasForeignKey(x => x.ScriptId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

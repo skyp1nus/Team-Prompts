@@ -64,6 +64,16 @@ public sealed class CreateGenerationRequestValidator : AbstractValidator<CreateG
     }
 }
 
+public sealed class SaveCanvasRequestValidator : AbstractValidator<SaveCanvasRequest>
+{
+    public SaveCanvasRequestValidator()
+    {
+        RuleFor(x => x.Nodes).NotNull();
+        RuleForEach(x => x.Nodes).ChildRules(n =>
+            n.RuleFor(c => c.NodeKey).NotEmpty().MaximumLength(200));
+    }
+}
+
 public sealed class SetApiKeyRequestValidator : AbstractValidator<SetApiKeyRequest>
 {
     public SetApiKeyRequestValidator() => RuleFor(x => x.ApiKey).NotEmpty();

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
 import {
+  getGetApiScriptsQueryKey,
   useDeleteApiScriptsIdSessions,
   useGetApiScriptsIdSessions,
 } from "@/api/endpoints/scripts/scripts";
@@ -92,12 +93,10 @@ export function CenterPanel() {
       { id: activeScriptId },
       {
         onSuccess: () => {
-          invalidatePath(
-            qc,
-            `/api/scripts/${activeScriptId}/sessions`,
-            `/api/scripts/${activeScriptId}/tray`,
-            "/api/scripts",
-          );
+          invalidatePath(qc, `/api/scripts/${activeScriptId}/sessions`, `/api/scripts/${activeScriptId}/tray`);
+          // Refresh just the scripts list (SessionCount) — not the bare "/api/scripts" prefix, which
+          // would also sweep the shared canvas-layout query and force a needless refetch.
+          qc.invalidateQueries({ queryKey: getGetApiScriptsQueryKey() });
           toast.success("Canvas cleared");
         },
         onError: () => toast.error("Couldn’t clear the canvas"),
@@ -209,7 +208,7 @@ export function CenterPanel() {
         ) : view === "grid" ? (
           <GridView groups={groups} scriptId={activeScriptId} />
         ) : (
-          <MapView groups={groups} scriptId={activeScriptId} />
+          <MapView key={activeScriptId} groups={groups} scriptId={activeScriptId} />
         )}
       </div>
 
