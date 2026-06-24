@@ -167,6 +167,7 @@ function buildStore() {
     sc1: [
       session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1, 3]),
       session("sc1", prompts[0], "openai/gpt-4o", 5, []),
+      session("sc1", prompts[1], "anthropic/claude-3.7-sonnet", 5, []),
       session("sc1", prompts[2], "anthropic/claude-3.7-sonnet", 5, [0], [0]),
       session("sc1", prompts[2], "openai/gpt-4o", 4, []),
     ],
