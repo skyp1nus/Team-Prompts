@@ -12,6 +12,7 @@ import {
   Plus,
   RotateCw,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import {
   useCallback,
@@ -21,7 +22,10 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { usePostApiGenerationSessionsSessionIdRegenerate } from "@/api/endpoints/generation/generation";
+import {
+  useDeleteApiGenerationSessionsSessionId,
+  usePostApiGenerationSessionsSessionIdRegenerate,
+} from "@/api/endpoints/generation/generation";
 import {
   useDeleteApiResultsResultIdFavorite,
   usePostApiResultsResultIdCopy,
@@ -514,8 +518,36 @@ function OutputNode({
   const qc = useQueryClient();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const copyEvent = usePostApiResultsResultIdCopy();
+  const deleteRun = useDeleteApiGenerationSessionsSessionId();
   const [copied, setCopied] = useState(false);
   const dot = providerDot(model);
+
+  // Delete this model's whole output — every run/session for it. Confirm first; gone for everyone.
+  const removeOutput = async () => {
+    const ids = runs.map((r) => r.session.id);
+    if (ids.length === 0 || deleteRun.isPending) return;
+    const many = ids.length > 1;
+    const ok = confirm(
+      many
+        ? `Delete this ${modelLabel(model)} output and all ${ids.length} runs? This can’t be undone.`
+        : "Delete this run and its results? This can’t be undone.",
+    );
+    if (!ok) return;
+    try {
+      await Promise.all(ids.map((sessionId) => deleteRun.mutateAsync({ sessionId })));
+      toast.success(many ? "Output deleted" : "Run deleted");
+    } catch {
+      toast.error("Couldn’t delete");
+    } finally {
+      invalidatePath(
+        qc,
+        `/api/scripts/${scriptId}/sessions`,
+        `/api/scripts/${scriptId}/tray`,
+        "/api/scripts",
+      );
+      onLayoutChange();
+    }
+  };
 
   const ordered = [...runs].sort(
     (a, b) => +new Date(b.session.createdAt) - +new Date(a.session.createdAt),
@@ -633,6 +665,19 @@ function OutputNode({
           <span className="shrink-0 text-[10px] text-faint">{providerOf(model)}</span>
         </span>
         <span className="flex-1" />
+        <button
+          onClick={removeOutput}
+          disabled={deleteRun.isPending}
+          title={runs.length > 1 ? `Delete this output (${runs.length} runs)` : "Delete this run"}
+          aria-label="Delete this output"
+          className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+        >
+          {deleteRun.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="size-3.5" />
+          )}
+        </button>
         {best && (
           <button
             onClick={copyBest}

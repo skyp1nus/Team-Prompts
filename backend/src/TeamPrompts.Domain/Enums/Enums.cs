@@ -58,6 +58,9 @@ public enum ActivityEventType
     ResultCopied = 11,
     ResultFavorited = 12,
     ResultUnfavorited = 13,
+    GenerationSessionDeleted = 14,
+    GenerationRunDeleted = 15,
+    ScriptGenerationsCleared = 16,
 }
 
 /// <summary>The entity an activity event points at, for click-through in the feed.</summary>

@@ -1,11 +1,14 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Columns3, LayoutGrid, Loader2, Network, Sparkles } from "lucide-react";
+import { Columns3, LayoutGrid, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
-import { useGetApiScriptsIdSessions } from "@/api/endpoints/scripts/scripts";
+import {
+  useDeleteApiScriptsIdSessions,
+  useGetApiScriptsIdSessions,
+} from "@/api/endpoints/scripts/scripts";
 import type { SessionWithResultsDto } from "@/api/model";
 import { ColumnsView } from "@/components/generation/columns-view";
 import { GridView } from "@/components/generation/grid-view";
@@ -37,6 +40,7 @@ export function CenterPanel() {
   } = useWorkspace();
   const { subscribeScript } = useGenerationStream();
   const gen = usePostApiGeneration();
+  const clearCanvas = useDeleteApiScriptsIdSessions();
   const [generating, setGenerating] = useState(false);
 
   const { data: sessions, isLoading } = useGetApiScriptsIdSessions(activeScriptId ?? "", {
@@ -77,11 +81,52 @@ export function CenterPanel() {
     else toast.success(settled.length > 1 ? `Started ${ok} runs` : "Generation started");
   };
 
+  // Wipe every run on the canvas for the active script. Destructive — confirm first.
+  const onClearCanvas = () => {
+    if (!activeScriptId || clearCanvas.isPending) return;
+    if (!confirm("Clear the whole canvas? This deletes every generated run for this script and can’t be undone."))
+      return;
+    clearCanvas.mutate(
+      { id: activeScriptId },
+      {
+        onSuccess: () => {
+          invalidatePath(
+            qc,
+            `/api/scripts/${activeScriptId}/sessions`,
+            `/api/scripts/${activeScriptId}/tray`,
+            "/api/scripts",
+          );
+          toast.success("Canvas cleared");
+        },
+        onError: () => toast.error("Couldn’t clear the canvas"),
+      },
+    );
+  };
+
   return (
     <section className="flex h-full min-w-0 flex-col bg-muted">
       {/* center-head */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-2.5 border-b border-border bg-background px-5 py-3">
-        <div className="flex min-w-0 flex-1 justify-center">
+        {/* left: clear the whole canvas */}
+        <div className="flex min-w-0 flex-1 items-center">
+          {hasResults && (
+            <button
+              onClick={onClearCanvas}
+              disabled={clearCanvas.isPending}
+              title="Clear every run on this script’s canvas"
+              className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+            >
+              {clearCanvas.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Clear canvas
+            </button>
+          )}
+        </div>
+        {/* center: view toggle */}
+        <div className="flex shrink-0 justify-center">
           <div className="flex gap-0.5 rounded-lg border border-border bg-muted p-[3px]">
             {VIEWS.map((v) => (
               <button
@@ -100,7 +145,7 @@ export function CenterPanel() {
             ))}
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2.5">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5">
           <ModelPicker />
           <Button
             onClick={onGenerate}

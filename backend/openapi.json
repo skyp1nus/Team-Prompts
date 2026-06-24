@@ -6,7 +6,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8080/"
+      "url": "http://localhost:5258/"
     }
   ],
   "paths": {
@@ -375,6 +375,50 @@
                 }
               }
             }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Generation"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/generation/runs/{runId}": {
+      "delete": {
+        "tags": [
+          "Generation"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -1083,6 +1127,27 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Scripts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
       }
     },
     "/api/scripts/{id}/tray": {
@@ -1547,7 +1612,10 @@
           "GenerationFailed",
           "ResultCopied",
           "ResultFavorited",
-          "ResultUnfavorited"
+          "ResultUnfavorited",
+          "GenerationSessionDeleted",
+          "GenerationRunDeleted",
+          "ScriptGenerationsCleared"
         ]
       },
       "ActivityFeedDto": {
