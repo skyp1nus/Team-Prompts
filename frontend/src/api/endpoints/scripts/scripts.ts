@@ -24,8 +24,10 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  CanvasNodeDto,
   GetApiScriptsParams,
   PostApiScriptsBody,
+  SaveCanvasRequest,
   ScriptDto,
   ScriptListItemDto,
   SessionWithResultsDto,
@@ -649,3 +651,202 @@ export function useGetApiScriptsIdTray<TData = Awaited<ReturnType<typeof getApiS
 
 
 
+export const getApiScriptsIdCanvas = (
+    id: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<CanvasNodeDto[]>(
+      {url: `/api/scripts/${id}/canvas`, method: 'GET', signal
+    },
+      options);
+    }
+
+
+
+
+export const getGetApiScriptsIdCanvasQueryKey = (id: string,) => {
+    return [
+    `/api/scripts/${id}/canvas`
+    ] as const;
+    }
+
+
+export const getGetApiScriptsIdCanvasQueryOptions = <TData = Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError = ErrorType<unknown>>(id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetApiScriptsIdCanvasQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>> = ({ signal }) => getApiScriptsIdCanvas(id, requestOptions, signal);
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetApiScriptsIdCanvasQueryResult = NonNullable<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>>
+export type GetApiScriptsIdCanvasQueryError = ErrorType<unknown>
+
+
+export function useGetApiScriptsIdCanvas<TData = Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError = ErrorType<unknown>>(
+ id: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiScriptsIdCanvas>>,
+          TError,
+          Awaited<ReturnType<typeof getApiScriptsIdCanvas>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiScriptsIdCanvas<TData = Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getApiScriptsIdCanvas>>,
+          TError,
+          Awaited<ReturnType<typeof getApiScriptsIdCanvas>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetApiScriptsIdCanvas<TData = Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetApiScriptsIdCanvas<TData = Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiScriptsIdCanvas>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetApiScriptsIdCanvasQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export const putApiScriptsIdCanvas = (
+    id: string,
+    saveCanvasRequest: BodyType<SaveCanvasRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/scripts/${id}/canvas`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: saveCanvasRequest, signal
+    },
+      options);
+    }
+
+
+
+export const getPutApiScriptsIdCanvasMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptsIdCanvas>>, TError,{id: string;data: BodyType<SaveCanvasRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiScriptsIdCanvas>>, TError,{id: string;data: BodyType<SaveCanvasRequest>}, TContext> => {
+
+const mutationKey = ['putApiScriptsIdCanvas'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiScriptsIdCanvas>>, {id: string;data: BodyType<SaveCanvasRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  putApiScriptsIdCanvas(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiScriptsIdCanvasMutationResult = NonNullable<Awaited<ReturnType<typeof putApiScriptsIdCanvas>>>
+    export type PutApiScriptsIdCanvasMutationBody = BodyType<SaveCanvasRequest>
+    export type PutApiScriptsIdCanvasMutationError = ErrorType<unknown>
+
+    export const usePutApiScriptsIdCanvas = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptsIdCanvas>>, TError,{id: string;data: BodyType<SaveCanvasRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof putApiScriptsIdCanvas>>,
+        TError,
+        {id: string;data: BodyType<SaveCanvasRequest>},
+        TContext
+      > => {
+      return useMutation(getPutApiScriptsIdCanvasMutationOptions(options), queryClient);
+    }
+    export const deleteApiScriptsIdCanvas = (
+    id: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/scripts/${id}/canvas`, method: 'DELETE', signal
+    },
+      options);
+    }
+
+
+
+export const getDeleteApiScriptsIdCanvasMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteApiScriptsIdCanvas'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteApiScriptsIdCanvas(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiScriptsIdCanvasMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>>
+
+    export type DeleteApiScriptsIdCanvasMutationError = ErrorType<unknown>
+
+    export const useDeleteApiScriptsIdCanvas = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiScriptsIdCanvas>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiScriptsIdCanvasMutationOptions(options), queryClient);
+    }

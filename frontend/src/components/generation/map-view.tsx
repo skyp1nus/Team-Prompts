@@ -11,6 +11,7 @@ import {
   Maximize2,
   Minus,
   Plus,
+  RotateCcw,
   RotateCw,
   Sparkles,
   Trash2,
@@ -19,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -34,6 +36,13 @@ import {
   usePostApiResultsResultIdFavorite,
   usePostApiResultsResultIdHighlight,
 } from "@/api/endpoints/results/results";
+import {
+  getGetApiScriptsIdCanvasQueryKey,
+  getGetApiScriptsQueryKey,
+  useDeleteApiScriptsIdCanvas,
+  useGetApiScriptsIdCanvas,
+  usePutApiScriptsIdCanvas,
+} from "@/api/endpoints/scripts/scripts";
 import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { Button } from "@/components/ui/button";
@@ -67,12 +76,76 @@ type Edge = {
   d: string;
 };
 
+/* ---------- free-form canvas layout ---------- */
+type XY = { x: number; y: number };
+type FlatNode =
+  | { key: string; kind: "prompt"; group: Group }
+  | {
+      key: string;
+      kind: "col";
+      group: Group;
+      colId: string;
+      model: string;
+      runs: SessionWithResultsDto[];
+    };
+
+/** Layer padding + lane gaps, mirroring the design's flex layout so auto-placed blocks land where
+ *  the old flow put them (px-14 / py-3.5, gap-16 lanes, gap-[132px] columns, gap-[34px] stacks). */
+const PAD_X = 56;
+const PAD_Y = 14;
+const LANE_GAP_Y = 64;
+const COL_GAP_X = 132;
+const COL_GAP_Y = 34;
+const PROMPT_W = 360;
+/** Pointer travel (screen px) before a press becomes a drag — below it, the click passes through. */
+const DRAG_THRESHOLD = 4;
+
+const promptKey = (promptId: string) => `prompt:${promptId}`;
+const colNodeKey = (colId: string) => `col:${colId}`;
+
+function flattenNodes(groups: Group[]): FlatNode[] {
+  const out: FlatNode[] = [];
+  for (const g of groups) {
+    out.push({ key: promptKey(g.promptId), kind: "prompt", group: g });
+    for (const mg of groupModels(g.sessions)) {
+      const colId = `${g.promptId}::${mg.model}`;
+      out.push({ key: colNodeKey(colId), kind: "col", group: g, colId, model: mg.model, runs: mg.runs });
+    }
+  }
+  return out;
+}
+
+/** Deterministic default grid (used only for blocks with no saved/known position): prompt on the
+ *  left of each lane, its model outputs stacked to the right; lanes stacked top-to-bottom. */
+function computeAutoGrid(groups: Group[], sizeOf: (k: string) => { w: number; h: number }): Record<string, XY> {
+  const grid: Record<string, XY> = {};
+  let y = PAD_Y;
+  for (const g of groups) {
+    const pKey = promptKey(g.promptId);
+    const pSize = sizeOf(pKey);
+    grid[pKey] = { x: PAD_X, y };
+    const colX = PAD_X + (pSize.w || PROMPT_W) + COL_GAP_X;
+    let cy = y;
+    for (const mg of groupModels(g.sessions)) {
+      const cKey = colNodeKey(`${g.promptId}::${mg.model}`);
+      grid[cKey] = { x: colX, y: cy };
+      cy += sizeOf(cKey).h + COL_GAP_Y;
+    }
+    const stacked = cy - COL_GAP_Y - y; // total height of the stacked outputs
+    const laneHeight = Math.max(pSize.h, stacked, 0);
+    y += laneHeight + LANE_GAP_Y;
+  }
+  return grid;
+}
+
 /**
- * Node-flow map (design "Team Prompts - Map (shadcn)"). Each prompt is a lane that flows
- * left → right: the prompt node on the left, one output node per model on the right, joined by
- * provider-coloured bezier edges from the prompt card's right edge to each output card's left edge.
+ * Free-form node map (design "Team Prompts - Map (shadcn)"). Each block — a prompt lane on the left
+ * and one output card per model on the right — is absolutely positioned and can be dragged anywhere,
+ * Figma-style. Positions are saved per script and shared with the whole team (auto-layout is only the
+ * starting arrangement). Provider-coloured bezier edges re-route to follow blocks as they move.
  */
 export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: string }) {
+  const qc = useQueryClient();
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const tRef = useRef<Transform>({ z: 0.8, tx: 40, ty: 28 });
@@ -84,12 +157,118 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   const [sizeTick, setSizeTick] = useState(0);
   const [hover, setHover] = useState<Hover>(null);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [svg, setSvg] = useState({ w: 0, h: 0 });
+
+  /* ---- canvas positions (shared, persisted) ---- */
+  const { data: savedNodes } = useGetApiScriptsIdCanvas(scriptId, { query: { enabled: !!scriptId } });
+  const saveCanvas = usePutApiScriptsIdCanvas();
+  const resetCanvas = useDeleteApiScriptsIdCanvas();
+
+  const nodes = useMemo(() => flattenNodes(groups), [groups]);
+  const nodeKeys = useMemo(() => nodes.map((n) => n.key), [nodes]);
+  const structuralKey = useMemo(() => nodeKeys.join("|"), [nodeKeys]);
+  const serverPos = useMemo(() => {
+    const m: Record<string, XY> = {};
+    for (const n of savedNodes ?? []) m[n.nodeKey] = { x: n.x, y: n.y };
+    return m;
+  }, [savedNodes]);
+
+  const [pos, setPos] = useState<Record<string, XY>>({});
+  const posRef = useRef(pos);
+  useEffect(() => {
+    posRef.current = pos;
+  }, [pos]);
+  const [ready, setReady] = useState(false);
+  const [layerSize, setLayerSize] = useState({ w: 0, h: 0 });
+  const [dragKey, setDragKey] = useState<string | null>(null);
+
+  const nodeEls = useRef<Map<string, HTMLDivElement>>(new Map());
+  const nodeRoRef = useRef<ResizeObserver | null>(null);
+  const setNodeEl = useCallback((key: string, el: HTMLDivElement | null) => {
+    const prev = nodeEls.current.get(key);
+    if (prev && prev !== el) nodeRoRef.current?.unobserve(prev);
+    if (el) {
+      nodeEls.current.set(key, el);
+      nodeRoRef.current?.observe(el);
+    } else {
+      nodeEls.current.delete(key);
+    }
+  }, []);
+
+  /* Re-measure when a block's own content grows/shrinks (live token streaming, expanding a result) —
+     not just on viewport resize — so edges and the layer bbox keep following the block. */
+  useEffect(() => {
+    const ro = new ResizeObserver(() => setSizeTick((s) => s + 1));
+    nodeRoRef.current = ro;
+    for (const el of nodeEls.current.values()) ro.observe(el);
+    return () => {
+      ro.disconnect();
+      nodeRoRef.current = null;
+    };
+  }, []);
+  /** Measure a block in layer coordinates (screen size ÷ current zoom). */
+  const sizeOf = useCallback((key: string) => {
+    const el = nodeEls.current.get(key);
+    const z = tRef.current.z || 1;
+    if (!el) return { w: PROMPT_W, h: 120 };
+    const r = el.getBoundingClientRect();
+    return { w: r.width / z, h: r.height / z };
+  }, []);
 
   useEffect(() => {
     tRef.current = t;
   }, [t]);
   const bumpLayout = useCallback(() => setLayoutVersion((v) => v + 1), []);
+
+  /* Wait for the saved layout before placing anything — otherwise auto-layout would seed first and
+     the persisted positions (arriving a tick later) would be ignored. Switching scripts remounts
+     this component (keyed on scriptId), so per-script state starts clean without a reset effect. */
+  const canvasReady = !scriptId || savedNodes !== undefined;
+
+  /* Resolve positions: keep already-placed blocks where they are, seed any new/unplaced block from
+     its saved position or the auto-grid, and forget blocks that no longer exist. Block sizes are
+     measured from the DOM (rendered hidden until placed), so the seed never overlaps. */
+  useLayoutEffect(() => {
+    if (!canvasReady) return;
+    setPos((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      const keySet = new Set(nodeKeys);
+      for (const k of Object.keys(next))
+        if (!keySet.has(k)) {
+          delete next[k];
+          changed = true;
+        }
+      const unplaced = nodeKeys.filter((k) => next[k] == null);
+      if (unplaced.length) {
+        const grid = computeAutoGrid(groups, sizeOf);
+        for (const k of unplaced) {
+          next[k] = serverPos[k] ?? grid[k] ?? { x: PAD_X, y: PAD_Y };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasReady, structuralKey, serverPos, sizeOf]);
+
+  /* Size the layer to the blocks' bounding box so pan/fit and the grid background cover everything. */
+  useLayoutEffect(() => {
+    if (!ready) return;
+    let w = 0;
+    let h = 0;
+    for (const k of nodeKeys) {
+      const p = pos[k];
+      if (!p) continue;
+      const s = sizeOf(k);
+      w = Math.max(w, p.x + s.w);
+      h = Math.max(h, p.y + s.h);
+    }
+    const nw = w + PAD_X;
+    const nh = h + PAD_Y;
+    setLayerSize((ls) => (ls.w === nw && ls.h === nh ? ls : { w: nw, h: nh }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos, ready, structuralKey, sizeOf, layoutVersion, sizeTick]);
 
   const zoomAt = useCallback((nz: number, px: number, py: number) => {
     setT((p) => {
@@ -119,6 +298,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     let ly = 0;
     const onDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      // A press on a block drags the block (handled per-node); panning only starts on empty canvas.
       if (e.button !== 0 || target.closest("[data-node]") || target.closest("button")) return;
       panningRef.current = true;
       lx = e.clientX;
@@ -154,6 +334,81 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     };
   }, [zoomAt]);
 
+  /* ---- per-block dragging (Figma-style free move) ---- */
+  const dragRef = useRef<{
+    key: string;
+    sx: number;
+    sy: number;
+    px: number;
+    py: number;
+    moved: boolean;
+    pointerId: number;
+  } | null>(null);
+  const swallowClickRef = useRef(false);
+
+  const persistPositions = useCallback(
+    (moved: { nodeKey: string; x: number; y: number }[]) => {
+      if (!scriptId || moved.length === 0) return;
+      saveCanvas.mutate(
+        { id: scriptId, data: { nodes: moved } },
+        { onError: () => toast.error("Couldn’t save the layout") },
+      );
+    },
+    [scriptId, saveCanvas],
+  );
+
+  const onNodePointerDown = (key: string) => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    // Clear any stale swallow flag BEFORE the interactive-control early-return — a previous drag may
+    // have been released over empty canvas / a different block, where no per-node click ever fired to
+    // clear it. Otherwise the next button press here would be wrongly eaten.
+    swallowClickRef.current = false;
+    const target = e.target as HTMLElement;
+    // Let interactive controls (Generate, star, expand…) work without starting a drag.
+    if (target.closest("button, a, input, textarea, select, [data-no-drag]")) return;
+    const p = posRef.current[key];
+    if (!p) return;
+    dragRef.current = { key, sx: p.x, sy: p.y, px: e.clientX, py: e.clientY, moved: false, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onNodePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const dx = e.clientX - d.px;
+    const dy = e.clientY - d.py;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (!d.moved) {
+      d.moved = true;
+      setDragKey(d.key);
+      setHover(null);
+    }
+    const z = tRef.current.z || 1;
+    setPos((prev) => ({ ...prev, [d.key]: { x: d.sx + dx / z, y: d.sy + dy / z } }));
+  };
+  const onNodePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    dragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+    if (d.moved) {
+      swallowClickRef.current = true; // eat the click that fires right after the drag
+      setDragKey(null);
+      const fp = posRef.current[d.key];
+      if (fp) persistPositions([{ nodeKey: d.key, x: fp.x, y: fp.y }]);
+    }
+  };
+  const onNodeClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (swallowClickRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      swallowClickRef.current = false;
+    }
+  };
+
   const zoomCenter = (factor: number) => {
     const vp = viewportRef.current;
     if (!vp) return;
@@ -162,44 +417,63 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
 
   const fit = useCallback(() => {
     const vp = viewportRef.current;
-    const layer = layerRef.current;
-    if (!vp || !layer) return;
-    const cw = layer.scrollWidth;
-    const ch = layer.scrollHeight;
+    if (!vp) return;
+    const cw = layerSize.w;
+    const ch = layerSize.h;
     const vw = vp.clientWidth;
     const vh = vp.clientHeight;
     if (!cw || !ch || !vw) return;
     const z = clampZ(Math.min((vw - 56) / cw, (vh - 56) / ch, 1));
     setT({ z, tx: Math.max(28, (vw - cw * z) / 2), ty: Math.max(28, (vh - ch * z) / 2) });
-  }, []);
+  }, [layerSize.w, layerSize.h]);
 
   const initFit = useCallback(() => {
     const vp = viewportRef.current;
-    const layer = layerRef.current;
-    if (!vp || !layer) return;
-    const cw = layer.scrollWidth;
+    if (!vp) return;
+    const cw = layerSize.w;
     const vw = vp.clientWidth;
     if (!cw || !vw) return;
     const z = Math.max(0.55, +Math.min((vw - 56) / cw, 1).toFixed(3));
     setT({ z, tx: Math.max(28, (vw - cw * z) / 2), ty: 28 });
-  }, []);
+  }, [layerSize.w]);
 
-  /* one-time initial fit once nodes exist */
+  /* one-time initial fit once the first layout is resolved */
   useEffect(() => {
-    if (initedRef.current || groups.length === 0) return;
+    if (initedRef.current || !ready || layerSize.w === 0) return;
     initedRef.current = true;
     requestAnimationFrame(initFit);
-  }, [groups.length, initFit]);
+  }, [ready, layerSize.w, initFit]);
 
-  /* recompute edges only on layout / resize — NOT on pan/zoom. Edges run horizontally from each
-     prompt card's right-middle to each output card's left-middle. */
+  /* Reset every block back to auto-layout (shared). */
+  const onResetLayout = () => {
+    if (!scriptId || resetCanvas.isPending) return;
+    resetCanvas.mutate(
+      { id: scriptId },
+      {
+        onSuccess: () => {
+          qc.setQueryData(getGetApiScriptsIdCanvasQueryKey(scriptId), []);
+          // Re-seed the auto-grid synchronously from current measurements. Don't rely on the placement
+          // effect re-running: setQueryData([]) structurally shares the same [] reference when the
+          // canvas was already empty, so serverPos wouldn't change and the effect wouldn't fire —
+          // leaving every block stuck hidden.
+          setPos(computeAutoGrid(groups, sizeOf));
+          setReady(true);
+          toast.success("Layout reset");
+        },
+        onError: () => toast.error("Couldn’t reset the layout"),
+      },
+    );
+  };
+
+  /* Recompute edges on layout / resize / drag. Edges run from each prompt card's right-middle to
+     each output card's left-middle, reading live DOM rects so they follow blocks as they move. */
   useLayoutEffect(() => {
     const layer = layerRef.current;
     if (!layer) {
       setEdges([]);
       return;
     }
-    const z = t.z;
+    const z = tRef.current.z || 1;
     const base = layer.getBoundingClientRect();
     const next: Edge[] = [];
     layer.querySelectorAll<HTMLElement>("[data-prompt]").forEach((pr) => {
@@ -216,7 +490,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
         const cr = oc.getBoundingClientRect();
         const bx = (cr.left - base.left) / z;
         const by = (cr.top + cr.height / 2 - base.top) / z;
-        const dx = Math.max(60, (bx - ax) * 0.5);
+        const dx = Math.max(60, Math.abs(bx - ax) * 0.5);
         next.push({
           key: `${pid}__${cid}`,
           promptId: pid,
@@ -231,9 +505,8 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
       });
     });
     setEdges(next);
-    setSvg({ w: layer.scrollWidth, h: layer.scrollHeight });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, layoutVersion, sizeTick]);
+  }, [structuralKey, layoutVersion, sizeTick, pos, layerSize.w, layerSize.h]);
 
   /* resize → recompute edges */
   useEffect(() => {
@@ -245,6 +518,18 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   }, []);
 
   const dim = hover !== null;
+  const litOf = (n: FlatNode) => {
+    if (!hover) return false;
+    if (n.kind === "prompt")
+      return (
+        (hover.type === "prompt" && hover.id === n.group.promptId) ||
+        (hover.type === "col" && hover.id.startsWith(`${n.group.promptId}::`))
+      );
+    return (
+      (hover.type === "col" && hover.id === n.colId) ||
+      (hover.type === "prompt" && hover.id === n.group.promptId)
+    );
+  };
 
   return (
     <div
@@ -257,12 +542,16 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     >
       <div
         ref={layerRef}
-        className="absolute top-0 left-0 w-max origin-top-left px-14 py-3.5 will-change-transform"
-        style={{ transform: `translate(${t.tx}px, ${t.ty}px) scale(${t.z})` }}
+        className="absolute top-0 left-0 origin-top-left will-change-transform"
+        style={{
+          transform: `translate(${t.tx}px, ${t.ty}px) scale(${t.z})`,
+          width: layerSize.w || "max-content",
+          height: layerSize.h || "100%",
+        }}
       >
         <svg
           className="pointer-events-none absolute top-0 left-0 overflow-visible"
-          style={{ width: svg.w, height: svg.h, zIndex: 0 }}
+          style={{ width: layerSize.w, height: layerSize.h, zIndex: 0 }}
         >
           {edges.map((e) => {
             const hot =
@@ -285,54 +574,66 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
           })}
         </svg>
 
-        <div className="relative flex w-max flex-col gap-16" style={{ zIndex: 1 }}>
-          {groups.map((g) => {
-            const promptLit =
-              (hover?.type === "prompt" && hover.id === g.promptId) ||
-              (hover?.type === "col" && (hover.id ?? "").startsWith(`${g.promptId}::`));
-            return (
-              <div key={g.promptId} className="relative flex w-max items-start gap-[132px]">
+        {nodes.map((n) => {
+          const p = pos[n.key];
+          const lit = litOf(n);
+          return (
+            <div
+              key={n.key}
+              ref={(el) => setNodeEl(n.key, el)}
+              data-node
+              data-canvas-node={n.key}
+              onPointerDown={onNodePointerDown(n.key)}
+              onPointerMove={onNodePointerMove}
+              onPointerUp={onNodePointerUp}
+              onPointerCancel={onNodePointerUp}
+              onClickCapture={onNodeClickCapture}
+              className={cn(
+                "absolute top-0 left-0 touch-none select-none",
+                dragKey === n.key ? "cursor-grabbing" : "cursor-grab",
+              )}
+              style={{
+                transform: `translate(${p?.x ?? 0}px, ${p?.y ?? 0}px)`,
+                zIndex: dragKey === n.key ? 50 : 1,
+                visibility: p && ready ? "visible" : "hidden",
+              }}
+            >
+              {n.kind === "prompt" ? (
                 <PromptNode
-                  group={g}
+                  group={n.group}
                   scriptId={scriptId}
-                  lit={promptLit}
+                  lit={lit}
                   onHover={(h) => {
-                    if (panningRef.current) return;
-                    setHover(h ? { type: "prompt", id: g.promptId } : null);
+                    if (panningRef.current || dragRef.current) return;
+                    setHover(h ? { type: "prompt", id: n.group.promptId } : null);
                   }}
                 />
-                <div className="flex flex-col gap-[34px]">
-                  {groupModels(g.sessions).map((mg) => {
-                    const colId = `${g.promptId}::${mg.model}`;
-                    return (
-                      <OutputNode
-                        key={colId}
-                        colId={colId}
-                        model={mg.model}
-                        runs={mg.runs}
-                        promptId={g.promptId}
-                        scriptId={scriptId}
-                        lit={
-                          (hover?.type === "col" && hover.id === colId) ||
-                          (hover?.type === "prompt" && hover.id === g.promptId)
-                        }
-                        onHover={(h) => {
-                          if (panningRef.current) return;
-                          setHover(h ? { type: "col", id: colId } : null);
-                        }}
-                        onLayoutChange={bumpLayout}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              ) : (
+                <OutputNode
+                  colId={n.colId}
+                  model={n.model}
+                  runs={n.runs}
+                  promptId={n.group.promptId}
+                  scriptId={scriptId}
+                  lit={lit}
+                  onHover={(h) => {
+                    if (panningRef.current || dragRef.current) return;
+                    setHover(h ? { type: "col", id: n.colId } : null);
+                  }}
+                  onLayoutChange={bumpLayout}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* zoom controls (design .map-zoom) */}
+      {/* zoom + layout controls (design .map-zoom) */}
       <div className="absolute right-4 bottom-4 z-20 flex items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-md">
+        <ZoomBtn onClick={onResetLayout} label="Reset layout — tidy every block back into place">
+          {resetCanvas.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+        </ZoomBtn>
+        <span className="mx-0.5 h-[18px] w-px bg-border" />
         <ZoomBtn onClick={() => zoomCenter(1 / 1.6)} label="Zoom out">
           <Minus className="size-4" />
         </ZoomBtn>
@@ -543,12 +844,9 @@ function OutputNode({
     } catch {
       toast.error("Couldn’t delete");
     } finally {
-      invalidatePath(
-        qc,
-        `/api/scripts/${scriptId}/sessions`,
-        `/api/scripts/${scriptId}/tray`,
-        "/api/scripts",
-      );
+      invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
+      // Refresh the scripts list (SessionCount) without sweeping the shared canvas-layout query.
+      qc.invalidateQueries({ queryKey: getGetApiScriptsQueryKey() });
       onLayoutChange();
     }
   };
