@@ -1501,6 +1501,84 @@
           }
         }
       }
+    },
+    "/api/results/{resultId}/highlight": {
+      "post": {
+        "tags": [
+          "Results"
+        ],
+        "parameters": [
+          {
+            "name": "resultId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Results"
+        ],
+        "parameters": [
+          {
+            "name": "resultId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1615,7 +1693,9 @@
           "ResultUnfavorited",
           "GenerationSessionDeleted",
           "GenerationRunDeleted",
-          "ScriptGenerationsCleared"
+          "ScriptGenerationsCleared",
+          "ResultHighlighted",
+          "ResultUnhighlighted"
         ]
       },
       "ActivityFeedDto": {
@@ -1757,7 +1837,10 @@
           "createdAt",
           "isFavorite",
           "favoriteCount",
-          "copyCount"
+          "copyCount",
+          "isHighlighted",
+          "highlightedBy",
+          "highlightedAt"
         ],
         "type": "object",
         "properties": {
@@ -1800,6 +1883,24 @@
           "copyCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "format": "int32"
+          },
+          "isHighlighted": {
+            "type": "boolean"
+          },
+          "highlightedBy": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/UserRef"
+              }
+            ]
+          },
+          "highlightedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },

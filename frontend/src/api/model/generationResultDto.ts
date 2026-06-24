@@ -5,6 +5,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { ResultKind } from './resultKind';
+import type { UserRef } from './userRef';
 
 export interface GenerationResultDto {
   id: string;
@@ -16,4 +17,8 @@ export interface GenerationResultDto {
   isFavorite: boolean;
   favoriteCount: number;
   copyCount: number;
+  isHighlighted: boolean;
+  highlightedBy: unknown | null | UserRef;
+  /** @nullable */
+  highlightedAt: string | null;
 }

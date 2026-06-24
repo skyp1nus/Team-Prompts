@@ -16,6 +16,10 @@ public interface IGenerationService
     Task<IReadOnlyList<SessionWithResultsDto>> GetScriptSessionsAsync(Guid scriptId, CancellationToken ct = default);
     Task<SessionWithResultsDto?> GetSessionAsync(Guid sessionId, CancellationToken ct = default);
     Task<bool> ToggleFavoriteAsync(Guid resultId, bool on, CancellationToken ct = default);
+
+    /// <summary>Sets/clears the team-wide highlight on a result. Shared, not per-user. Returns the final state.</summary>
+    Task<bool> ToggleHighlightAsync(Guid resultId, bool on, CancellationToken ct = default);
+
     Task RecordCopyAsync(Guid resultId, CancellationToken ct = default);
     Task<IReadOnlyList<TrayItemDto>> GetTrayAsync(Guid scriptId, CancellationToken ct = default);
 
@@ -132,11 +136,16 @@ public sealed class GenerationService(
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
 
-        var dir = await users.GetAsync(sessions.Select(s => s.CreatedByUserId).Distinct(), ct);
+        var userIds = sessions.Select(s => s.CreatedByUserId)
+            .Concat(sessions.SelectMany(s => s.Results)
+                .Where(r => r.HighlightedByUserId is not null)
+                .Select(r => r.HighlightedByUserId!))
+            .Distinct();
+        var dir = await users.GetAsync(userIds, ct);
         var me = currentUser.UserId;
         return sessions.Select(s => new SessionWithResultsDto(
             MapSession(s, dir),
-            s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me)).ToList())).ToList();
+            s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me, dir)).ToList())).ToList();
     }
 
     public async Task<SessionWithResultsDto?> GetSessionAsync(Guid sessionId, CancellationToken ct = default)
@@ -149,10 +158,13 @@ public sealed class GenerationService(
             .FirstOrDefaultAsync(ct);
         if (s is null) return null;
 
-        var dir = await users.GetAsync([s.CreatedByUserId], ct);
+        var userIds = new[] { s.CreatedByUserId }
+            .Concat(s.Results.Where(r => r.HighlightedByUserId is not null).Select(r => r.HighlightedByUserId!))
+            .Distinct();
+        var dir = await users.GetAsync(userIds, ct);
         var me = currentUser.UserId;
         return new SessionWithResultsDto(MapSession(s, dir),
-            s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me)).ToList());
+            s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me, dir)).ToList());
     }
 
     public async Task<bool> ToggleFavoriteAsync(Guid resultId, bool on, CancellationToken ct = default)
@@ -181,6 +193,37 @@ public sealed class GenerationService(
                 ActivityEventType.ResultUnfavorited,
                 TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
                 Summary: "Removed a result from the tray"), ct);
+        }
+        return on;
+    }
+
+    public async Task<bool> ToggleHighlightAsync(Guid resultId, bool on, CancellationToken ct = default)
+    {
+        var userId = currentUser.UserId ?? throw new ForbiddenException("Not authenticated.");
+        var result = await db.GenerationResults.FirstOrDefaultAsync(r => r.Id == resultId, ct)
+                     ?? throw new NotFoundException("Result not found.");
+
+        if (on && !result.IsHighlighted)
+        {
+            result.IsHighlighted = true;
+            result.HighlightedByUserId = userId;
+            result.HighlightedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.ResultHighlighted,
+                TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
+                Summary: "Highlighted a result"), ct);
+        }
+        else if (!on && result.IsHighlighted)
+        {
+            result.IsHighlighted = false;
+            result.HighlightedByUserId = null;
+            result.HighlightedAt = null;
+            await db.SaveChangesAsync(ct);
+            await activity.LogAsync(new ActivityLogEntry(
+                ActivityEventType.ResultUnhighlighted,
+                TargetType: ActivityTargetType.GenerationResult, TargetId: resultId,
+                Summary: "Cleared a result highlight"), ct);
         }
         return on;
     }
@@ -326,7 +369,10 @@ public sealed class GenerationService(
         new(s.Id, s.RunId, s.ScriptId, s.PromptId, s.PromptVersionId, s.Prompt?.Name ?? string.Empty,
             s.Model, s.Status, s.Error, Attribution.Of(dir, s.CreatedByUserId), s.CreatedAt, s.CompletedAt);
 
-    private static GenerationResultDto MapResult(GenerationResult r, string? me) =>
+    private static GenerationResultDto MapResult(GenerationResult r, string? me, IReadOnlyDictionary<string, UserRef> dir) =>
         new(r.Id, r.SessionId, r.Index, r.Content, r.Kind, r.CreatedAt,
-            me is not null && r.Favorites.Any(f => f.UserId == me), r.Favorites.Count, r.CopyEvents.Count);
+            me is not null && r.Favorites.Any(f => f.UserId == me), r.Favorites.Count, r.CopyEvents.Count,
+            r.IsHighlighted,
+            r.HighlightedByUserId is { } hid ? Attribution.Of(dir, hid) : null,
+            r.HighlightedAt);
 }

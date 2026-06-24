@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Copy,
   FileText,
+  Heart,
   Loader2,
   Maximize2,
   Minus,
@@ -28,10 +29,12 @@ import {
 } from "@/api/endpoints/generation/generation";
 import {
   useDeleteApiResultsResultIdFavorite,
+  useDeleteApiResultsResultIdHighlight,
   usePostApiResultsResultIdCopy,
   usePostApiResultsResultIdFavorite,
+  usePostApiResultsResultIdHighlight,
 } from "@/api/endpoints/results/results";
-import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto } from "@/api/model";
+import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { Button } from "@/components/ui/button";
 import { formatRelative, modelLabel } from "@/lib/format";
@@ -39,6 +42,7 @@ import { providerDot, providerOf } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export type Group = { promptId: string; promptName: string; sessions: SessionWithResultsDto[] };
 
@@ -819,11 +823,17 @@ function ResultRow({
   onLayoutChange: () => void;
 }) {
   const qc = useQueryClient();
+  const { showHighlightsOnly } = useWorkspace();
   const [open, setOpen] = useState(false);
   const fav = usePostApiResultsResultIdFavorite();
   const removeFav = useDeleteApiResultsResultIdFavorite();
+  const highlight = usePostApiResultsResultIdHighlight();
+  const removeHighlight = useDeleteApiResultsResultIdHighlight();
   const copyEvent = usePostApiResultsResultIdCopy();
   const isFav = result.isFavorite;
+  const isHi = result.isHighlighted;
+  const hiBy = result.highlightedBy as UserRef | null | undefined;
+  const dimmed = showHighlightsOnly && !isHi;
 
   // Collapsed rows show at most PREVIEW_MAX chars; the card is sized to fit exactly that many.
   const preview =
@@ -844,6 +854,18 @@ function ResultRow({
     );
   };
 
+  const toggleHighlight = () => {
+    (isHi ? removeHighlight : highlight).mutate(
+      { resultId: result.id },
+      {
+        onSuccess: () => {
+          invalidate();
+          toast.success(isHi ? "Highlight removed" : "Highlighted for the team");
+        },
+      },
+    );
+  };
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(result.content);
@@ -858,9 +880,11 @@ function ResultRow({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[10px] border border-border bg-card transition-colors",
+        "overflow-hidden rounded-[10px] border border-border bg-card transition-[color,background-color,border-color,opacity]",
         isFav && "border-primary bg-primary/[0.06]",
+        isHi && "ring-1 ring-rose-400/60",
         open && "border-border-strong",
+        dimmed && "opacity-30 hover:opacity-100",
       )}
     >
       <div
@@ -888,6 +912,28 @@ function ResultRow({
         <button
           onClick={(e) => {
             e.stopPropagation();
+            toggleHighlight();
+          }}
+          title={
+            isHi
+              ? hiBy
+                ? `Highlighted by ${hiBy.displayName} — click to remove`
+                : "Remove highlight"
+              : "Highlight this result for the team"
+          }
+          className={cn(
+            "flex size-[22px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px] transition-colors",
+            open && "-mt-[1px]",
+            isHi
+              ? "border-rose-400 bg-rose-500/10 text-rose-500"
+              : "border-border-strong text-faint hover:border-rose-400 hover:text-rose-500",
+          )}
+        >
+          <Heart className={cn("size-3.5", isHi && "fill-current")} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
             toggleFav();
           }}
           title={isFav ? "Remove from tray" : "Add to tray"}
@@ -908,6 +954,7 @@ function ResultRow({
             <span>{result.content.length} chars</span>
             {result.favoriteCount > 0 && <span>★ {result.favoriteCount}</span>}
             {result.copyCount > 0 && <span>copied {result.copyCount}</span>}
+            {isHi && hiBy && <span className="text-rose-500">♥ {hiBy.displayName}</span>}
           </div>
           <div className="mt-2.5">
             <button

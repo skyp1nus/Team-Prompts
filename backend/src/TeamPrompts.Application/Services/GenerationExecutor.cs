@@ -91,7 +91,7 @@ public sealed class GenerationExecutor(
                 await db.SaveChangesAsync(ct);
 
                 await notifier.ResultFinalized(scriptId, sessionId,
-                    new GenerationResultDto(result.Id, sessionId, i, result.Content, null, result.CreatedAt, false, 0, 0), ct);
+                    new GenerationResultDto(result.Id, sessionId, i, result.Content, null, result.CreatedAt, false, 0, 0, false, null, null), ct);
             }
 
             session.Status = SessionStatus.Completed;

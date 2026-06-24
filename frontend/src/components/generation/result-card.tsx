@@ -1,16 +1,19 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Plus } from "lucide-react";
+import { Check, Copy, Heart, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   useDeleteApiResultsResultIdFavorite,
+  useDeleteApiResultsResultIdHighlight,
   usePostApiResultsResultIdCopy,
   usePostApiResultsResultIdFavorite,
+  usePostApiResultsResultIdHighlight,
 } from "@/api/endpoints/results/results";
-import type { GenerationResultDto } from "@/api/model";
+import type { GenerationResultDto, UserRef } from "@/api/model";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function ResultCard({
   result,
@@ -24,12 +27,19 @@ export function ResultCard({
   scriptId: string;
 }) {
   const qc = useQueryClient();
+  const { showHighlightsOnly } = useWorkspace();
   const fav = usePostApiResultsResultIdFavorite();
   const unfav = useDeleteApiResultsResultIdFavorite();
+  const highlight = usePostApiResultsResultIdHighlight();
+  const unhighlight = useDeleteApiResultsResultIdHighlight();
   const copyEvent = usePostApiResultsResultIdCopy();
 
   const content = result?.content ?? liveText ?? "";
   const isFav = result?.isFavorite ?? false;
+  const isHi = result?.isHighlighted ?? false;
+  const hiBy = result?.highlightedBy as UserRef | null | undefined;
+  // When the highlights filter is on, anything not highlighted fades back (still hover-revealable).
+  const dimmed = showHighlightsOnly && !isHi;
 
   const invalidate = () =>
     invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
@@ -42,6 +52,19 @@ export function ResultCard({
         onSuccess: () => {
           invalidate();
           toast.success(isFav ? "Removed from tray" : "Added to tray");
+        },
+      },
+    );
+  };
+
+  const toggleHighlight = () => {
+    if (!result) return;
+    (isHi ? unhighlight : highlight).mutate(
+      { resultId: result.id },
+      {
+        onSuccess: () => {
+          invalidate();
+          toast.success(isHi ? "Highlight removed" : "Highlighted for the team");
         },
       },
     );
@@ -60,7 +83,7 @@ export function ResultCard({
 
   if (streaming && !result) {
     return (
-      <div className="rounded-xl border border-border bg-card p-3.5">
+      <div className={cn("rounded-xl border border-border bg-card p-3.5", dimmed && "opacity-30")}>
         <p className="min-h-5 text-sm whitespace-pre-wrap">
           {content}
           <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground/60 align-text-bottom" />
@@ -73,8 +96,10 @@ export function ResultCard({
     <div
       onClick={toggleFav}
       className={cn(
-        "group/card animate-rise relative cursor-pointer rounded-xl border border-border bg-card p-3.5 transition-[border-color,transform] hover:border-border-strong active:scale-[0.992]",
+        "group/card animate-rise relative cursor-pointer rounded-xl border border-border bg-card p-3.5 transition-[border-color,transform,opacity] hover:border-border-strong active:scale-[0.992]",
         isFav && "border-primary bg-primary/[0.06]",
+        isHi && "ring-1 ring-rose-400/60",
+        dimmed && "opacity-30 hover:opacity-100",
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -93,16 +118,38 @@ export function ResultCard({
           {content.length} chars
           {result && result.favoriteCount > 0 && <> · ★ {result.favoriteCount}</>}
           {result && result.copyCount > 0 && <> · copied {result.copyCount}</>}
+          {isHi && hiBy && <> · ♥ {hiBy.displayName}</>}
         </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            copy();
-          }}
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-faint transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Copy className="size-3" /> Copy
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleHighlight();
+            }}
+            title={
+              isHi
+                ? hiBy
+                  ? `Highlighted by ${hiBy.displayName} — click to remove`
+                  : "Remove highlight"
+                : "Highlight this result for the team"
+            }
+            className={cn(
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] transition-colors",
+              isHi ? "text-rose-500" : "text-faint hover:bg-accent hover:text-rose-500",
+            )}
+          >
+            <Heart className={cn("size-3", isHi && "fill-current")} /> {isHi ? "Highlighted" : "Highlight"}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              copy();
+            }}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-faint transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Copy className="size-3" /> Copy
+          </button>
+        </div>
       </div>
     </div>
   );

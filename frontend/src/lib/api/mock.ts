@@ -81,7 +81,13 @@ function version(
 
 type PromptRec = PromptDetailDto & { kind: "titles" | "desc" };
 
-function makeResults(sessionId: string, kind: "titles" | "desc", count: number, favIdx: number[] = []): GenerationResultDto[] {
+function makeResults(
+  sessionId: string,
+  kind: "titles" | "desc",
+  count: number,
+  favIdx: number[] = [],
+  hiIdx: number[] = [],
+): GenerationResultDto[] {
   const pool = kind === "desc" ? DESC_POOL : TITLE_POOL;
   return Array.from({ length: count }).map((_, i) => ({
     id: `${sessionId}-${i}`,
@@ -93,6 +99,9 @@ function makeResults(sessionId: string, kind: "titles" | "desc", count: number, 
     isFavorite: favIdx.includes(i),
     favoriteCount: favIdx.includes(i) ? 1 : 0,
     copyCount: 0,
+    isHighlighted: hiIdx.includes(i),
+    highlightedBy: hiIdx.includes(i) ? ref("Mara A.") : null,
+    highlightedAt: hiIdx.includes(i) ? iso(1) : null,
   }));
 }
 
@@ -102,6 +111,7 @@ function session(
   model: string,
   count: number,
   favIdx: number[] = [],
+  hiIdx: number[] = [],
 ): SessionWithResultsDto {
   const id = uid("s");
   return {
@@ -119,7 +129,7 @@ function session(
       createdAt: iso(1),
       completedAt: iso(1),
     },
-    results: makeResults(id, prompt.kind, count, favIdx),
+    results: makeResults(id, prompt.kind, count, favIdx, hiIdx),
   };
 }
 
@@ -152,9 +162,9 @@ function buildStore() {
 
   const sessionsByScript: Record<string, SessionWithResultsDto[]> = {
     sc1: [
-      session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1]),
+      session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1, 3]),
       session("sc1", prompts[0], "openai/gpt-4o", 5, []),
-      session("sc1", prompts[2], "anthropic/claude-3.7-sonnet", 5, [0]),
+      session("sc1", prompts[2], "anthropic/claude-3.7-sonnet", 5, [0], [0]),
       session("sc1", prompts[2], "openai/gpt-4o", 4, []),
     ],
     sc2: [],
@@ -392,6 +402,17 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
     if (r) {
       r.isFavorite = method === "POST";
       r.favoriteCount = Math.max(0, r.favoriteCount + (method === "POST" ? 1 : -1));
+    }
+    return reply({}, 120);
+  }
+  mm = m(/^\/api\/results\/([^/]+)\/highlight$/);
+  if (mm) {
+    const r = findResult(mm[1]);
+    if (r) {
+      const on = method === "POST";
+      r.isHighlighted = on;
+      r.highlightedBy = on ? ref("Mara A.") : null;
+      r.highlightedAt = on ? iso(0) : null;
     }
     return reply({}, 120);
   }
