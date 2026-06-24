@@ -37,6 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatRelative } from "@/lib/format";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 type Props = {
   promptId: string | null;
@@ -81,6 +82,7 @@ export function PromptDetailDialog({ promptId, open, onOpenChange }: Props) {
             promptName={prompt.name}
             versions={versions}
             onBranch={(id) => setBranchOf(id)}
+            onPicked={() => onOpenChange(false)}
           />
         )}
       </SheetContent>
@@ -101,17 +103,31 @@ function DetailPanel({
   promptName,
   versions,
   onBranch,
+  onPicked,
 }: {
   promptId: string;
   promptName: string;
   versions: PromptVersionDto[];
   onBranch: (versionId: string) => void;
+  onPicked: () => void;
 }) {
   const qc = useQueryClient();
   const { resolvedTheme } = useTheme();
   const promote = usePostApiPromptsIdVersionsVersionIdPromote();
+  const { selectedPromptIds, togglePrompt, promptVersions, setPromptVersion } = useWorkspace();
 
   const main = versions.find((v) => v.isMain) ?? versions[versions.length - 1];
+  // Which version the next run will use for this prompt: an explicit pin, else the current main.
+  const activeVersionId = promptVersions[promptId]?.versionId ?? main?.id ?? null;
+
+  // Pick a version for the next generation. Choosing main clears the pin so the run keeps following
+  // whatever the team promotes; choosing any other version pins it. Also selects the prompt for the run.
+  const useForGeneration = (v: PromptVersionDto, idx: number) => {
+    setPromptVersion(promptId, v.isMain ? null : { versionId: v.id, number: idx + 1 });
+    if (!selectedPromptIds.includes(promptId)) togglePrompt(promptId);
+    toast.success(v.isMain ? "The next run will follow Main" : `The next run will use v${idx + 1}`);
+    onPicked();
+  };
   const [fromId, setFromId] = useState<string | null>(null);
   const [toId, setToId] = useState<string | null>(null);
 
@@ -205,8 +221,11 @@ function DetailPanel({
                     </div>
                     {v.note && <div className="mt-1.5 text-[12.5px] leading-snug text-muted-foreground">{v.note}</div>}
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      <MiniBtn accent={activeVersionId === v.id} onClick={() => useForGeneration(v, idx)}>
+                        {activeVersionId === v.id ? "✓ Using for next run" : "Use for generation"}
+                      </MiniBtn>
                       {!v.isMain && (
-                        <MiniBtn accent onClick={() => doPromote(v.id)} disabled={promote.isPending}>
+                        <MiniBtn onClick={() => doPromote(v.id)} disabled={promote.isPending}>
                           Make this the team version
                         </MiniBtn>
                       )}

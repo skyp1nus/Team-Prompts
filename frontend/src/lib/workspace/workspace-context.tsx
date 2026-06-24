@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 
 export type CenterView = "columns" | "grid" | "map";
 
+/** A pinned prompt version for the next run. Absence of a pin = follow the prompt's current main
+ * version (always the latest the team promoted). <c>number</c> is the "vN" shown in the UI. */
+export type PromptVersionPin = { versionId: string; number: number };
+
 type WorkspaceValue = {
   /** The script whose generation history fills the center map. */
   activeScriptId: string | null;
@@ -15,6 +19,10 @@ type WorkspaceValue = {
   clearPrompts: () => void;
   /** Drop any selected prompt id that no longer exists. */
   prunePrompts: (existingIds: string[]) => void;
+
+  /** Per-prompt pinned version for the next run. No entry → use the prompt's current main version. */
+  promptVersions: Record<string, PromptVersionPin>;
+  setPromptVersion: (promptId: string, pin: PromptVersionPin | null) => void;
 
   /** Extra scripts chosen for a batch run (left panel multi-select). */
   batchScriptIds: string[];
@@ -73,6 +81,10 @@ function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeScriptId, setActiveScriptId] = usePersistedState<string | null>("tp.ws.activeScript", null);
   const [selectedPromptIds, setSelectedPromptIds] = usePersistedState<string[]>("tp.ws.prompts", []);
+  const [promptVersions, setPromptVersions] = usePersistedState<Record<string, PromptVersionPin>>(
+    "tp.ws.promptVersions",
+    {},
+  );
   const [batchScriptIds, setBatchScriptIds] = usePersistedState<string[]>("tp.ws.batchScripts", []);
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
@@ -88,8 +100,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     (existingIds: string[]) => {
       const set = new Set(existingIds);
       setSelectedPromptIds((p) => (p.every((id) => set.has(id)) ? p : p.filter((id) => set.has(id))));
+      // Drop version pins for prompts that no longer exist.
+      setPromptVersions((m) =>
+        Object.keys(m).every((id) => set.has(id))
+          ? m
+          : Object.fromEntries(Object.entries(m).filter(([id]) => set.has(id))),
+      );
     },
-    [setSelectedPromptIds],
+    [setSelectedPromptIds, setPromptVersions],
+  );
+
+  const setPromptVersion = useCallback(
+    (promptId: string, pin: PromptVersionPin | null) =>
+      setPromptVersions((m) => {
+        if (pin === null) {
+          if (!(promptId in m)) return m;
+          const rest = { ...m };
+          delete rest[promptId];
+          return rest;
+        }
+        return { ...m, [promptId]: pin };
+      }),
+    [setPromptVersions],
   );
 
   const toggleBatchScript = useCallback(
@@ -122,6 +154,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         togglePrompt,
         clearPrompts,
         prunePrompts,
+        promptVersions,
+        setPromptVersion,
         batchScriptIds,
         toggleBatchScript,
         clearBatch,

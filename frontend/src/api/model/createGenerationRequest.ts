@@ -4,10 +4,11 @@
  * TeamPrompts.Api | v1
  * OpenAPI spec version: 1.0.0
  */
+import type { GenerationPromptInput } from './generationPromptInput';
 
 export interface CreateGenerationRequest {
   scriptIds: string[];
-  promptIds: string[];
+  prompts: GenerationPromptInput[];
   /** @nullable */
   model: string | null;
   /** @nullable */

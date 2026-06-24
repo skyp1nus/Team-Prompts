@@ -15,6 +15,7 @@ export * from './createPromptRequest';
 export * from './createUserRequest';
 export * from './createVersionRequest';
 export * from './fileType';
+export * from './generationPromptInput';
 export * from './generationResultDto';
 export * from './generationRunDto';
 export * from './getApiActivityParams';

@@ -1863,7 +1863,7 @@
       "CreateGenerationRequest": {
         "required": [
           "scriptIds",
-          "promptIds",
+          "prompts",
           "model",
           "variantCount"
         ],
@@ -1876,11 +1876,10 @@
               "format": "uuid"
             }
           },
-          "promptIds": {
+          "prompts": {
             "type": "array",
             "items": {
-              "type": "string",
-              "format": "uuid"
+              "$ref": "#/components/schemas/GenerationPromptInput"
             }
           },
           "model": {
@@ -2234,6 +2233,11 @@
           "model": {
             "type": "string",
             "nullable": true
+          },
+          "promptVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         }
       },
@@ -2346,6 +2350,23 @@
           }
         }
       },
+      "GenerationPromptInput": {
+        "required": [
+          "promptId"
+        ],
+        "type": "object",
+        "properties": {
+          "promptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "promptVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
       "SessionDto": {
         "required": [
           "id",
@@ -2359,7 +2380,10 @@
           "error",
           "createdBy",
           "createdAt",
-          "completedAt"
+          "completedAt",
+          "promptVersionNumber",
+          "isMainVersion",
+          "promptVersionNote"
         ],
         "type": "object",
         "properties": {
@@ -2407,6 +2431,17 @@
           "completedAt": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          },
+          "promptVersionNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "isMainVersion": {
+            "type": "boolean"
+          },
+          "promptVersionNote": {
+            "type": "string",
             "nullable": true
           }
         }

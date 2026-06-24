@@ -17,7 +17,7 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function PromptsPanel() {
   const qc = useQueryClient();
   const { data: prompts, isLoading } = useGetApiPrompts();
-  const { selectedPromptIds, togglePrompt, prunePrompts } = useWorkspace();
+  const { selectedPromptIds, togglePrompt, prunePrompts, promptVersions } = useWorkspace();
   const del = useDeleteApiPromptsId();
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
 
@@ -68,6 +68,7 @@ export function PromptsPanel() {
               key={p.id}
               prompt={p}
               selected={selectedPromptIds.includes(p.id)}
+              pinnedVersion={promptVersions[p.id]?.number ?? null}
               onToggle={() => togglePrompt(p.id)}
               onOpen={() => setOpenPromptId(p.id)}
               onDelete={() => onDelete(p.id, p.name)}
@@ -88,12 +89,15 @@ export function PromptsPanel() {
 function PromptRow({
   prompt,
   selected,
+  pinnedVersion,
   onToggle,
   onOpen,
   onDelete,
 }: {
   prompt: PromptListItemDto;
   selected: boolean;
+  /** "vN" pinned for the next run, or null to follow Main. */
+  pinnedVersion: number | null;
   onToggle: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -118,14 +122,23 @@ function PromptRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium">{prompt.name}</span>
-          {hasMain && (
-            <span className="shrink-0 rounded-[5px] bg-primary/[0.08] px-1.5 py-px text-[9.5px] font-bold tracking-wide text-primary">
-              MAIN
+          {pinnedVersion !== null ? (
+            <span
+              title="The next run will use this pinned version"
+              className="shrink-0 rounded-[5px] bg-warn/15 px-1.5 py-px text-[9.5px] font-bold tracking-wide text-warn"
+            >
+              v{pinnedVersion}
             </span>
+          ) : (
+            hasMain && (
+              <span className="shrink-0 rounded-[5px] bg-primary/[0.08] px-1.5 py-px text-[9.5px] font-bold tracking-wide text-primary">
+                MAIN
+              </span>
+            )
           )}
         </div>
         <div className="mt-[3px] text-[11px] text-faint">
-          {hasMain && "Main · "}
+          {pinnedVersion !== null ? `Using v${pinnedVersion} · ` : hasMain && "Main · "}
           {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}
         </div>
       </div>

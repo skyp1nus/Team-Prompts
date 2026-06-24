@@ -5,9 +5,8 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface RegenerateRequest {
-  /** @nullable */
-  model: string | null;
+export interface GenerationPromptInput {
+  promptId: string;
   /** @nullable */
   promptVersionId?: string | null;
 }

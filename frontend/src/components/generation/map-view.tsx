@@ -45,6 +45,7 @@ import {
 } from "@/api/endpoints/scripts/scripts";
 import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
+import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
 import { formatRelative, modelLabel } from "@/lib/format";
 import { providerDot, providerOf } from "@/lib/models";
@@ -691,12 +692,20 @@ function PromptNode({
   onHover: (hovering: boolean) => void;
 }) {
   const qc = useQueryClient();
+  const { promptVersions } = useWorkspace();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const total = group.sessions.reduce((a, s) => a + s.results.length, 0);
   const models = groupModels(group.sessions);
   const modelCount = models.length;
   const latest = group.sessions[group.sessions.length - 1];
   const invalidate = () => invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
+  // Version every regen/add-model will run: the pinned pick for this prompt, else its current main.
+  const pin = promptVersions[group.promptId];
+  const pinnedVersionId = pin?.versionId ?? null;
+  // Badge for the next run: the pin, else the prompt's main (read off whichever session ran main).
+  const mainSession = group.sessions.find((s) => s.session.isMainVersion);
+  const nextNumber = pin?.number ?? mainSession?.session.promptVersionNumber ?? 0;
+  const nextIsMain = !pin;
 
   const regenMore = () => {
     // one fresh run per model — from each model's newest run as the template
@@ -704,7 +713,10 @@ function PromptNode({
       const newest = [...runs].sort(
         (a, b) => +new Date(b.session.createdAt) - +new Date(a.session.createdAt),
       )[0];
-      regen.mutate({ sessionId: newest.session.id, data: { model: null } }, { onSuccess: invalidate });
+      regen.mutate(
+        { sessionId: newest.session.id, data: { model: null, promptVersionId: pinnedVersionId } },
+        { onSuccess: invalidate },
+      );
     });
     toast.success("Regenerating…");
   };
@@ -712,7 +724,7 @@ function PromptNode({
   const addModel = (model: string | null) => {
     if (!model || !latest) return;
     regen.mutate(
-      { sessionId: latest.session.id, data: { model } },
+      { sessionId: latest.session.id, data: { model, promptVersionId: pinnedVersionId } },
       {
         onSuccess: () => {
           invalidate();
@@ -750,6 +762,7 @@ function PromptNode({
                 {group.promptName}
               </div>
             </div>
+            <VersionBadge number={nextNumber} isMain={nextIsMain} small />
           </div>
           <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
             <b className="font-bold text-foreground tabular-nums">{modelCount}</b> model
@@ -821,11 +834,13 @@ function OutputNode({
 }) {
   const { live } = useGenerationStream();
   const qc = useQueryClient();
+  const { promptVersions } = useWorkspace();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const copyEvent = usePostApiResultsResultIdCopy();
   const deleteRun = useDeleteApiGenerationSessionsSessionId();
   const [copied, setCopied] = useState(false);
   const dot = providerDot(model);
+  const pinnedVersionId = promptVersions[promptId]?.versionId ?? null;
 
   // Delete this model's whole output — every run/session for it. Confirm first; gone for everyone.
   const removeOutput = async () => {
@@ -860,7 +875,7 @@ function OutputNode({
     const newest = ordered[0];
     if (!newest) return;
     regen.mutate(
-      { sessionId: newest.session.id, data: { model: null } },
+      { sessionId: newest.session.id, data: { model: null, promptVersionId: pinnedVersionId } },
       {
         onSuccess: () => {
           invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
@@ -945,14 +960,21 @@ function OutputNode({
           )}
           {displayed.map((run, i) => (
             <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
-              {displayed.length > 1 && (
-                <div className="mb-1.5 flex items-center justify-between px-0.5 text-[10px] text-faint">
-                  <span className="font-semibold tracking-wide uppercase">
-                    {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
-                  </span>
-                  <span>{formatRelative(run.session.createdAt)}</span>
-                </div>
-              )}
+              <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5 text-[10px] text-faint">
+                <span className="flex items-center gap-1.5">
+                  {displayed.length > 1 && (
+                    <span className="font-semibold tracking-wide uppercase">
+                      {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
+                    </span>
+                  )}
+                  <VersionBadge
+                    number={run.session.promptVersionNumber}
+                    isMain={run.session.isMainVersion}
+                    small
+                  />
+                </span>
+                {displayed.length > 1 && <span>{formatRelative(run.session.createdAt)}</span>}
+              </div>
               <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
             </div>
           ))}
@@ -1023,6 +1045,7 @@ function RunBlock({
 }) {
   const { live } = useGenerationStream();
   const qc = useQueryClient();
+  const { promptVersions } = useWorkspace();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const ls = live[run.session.id];
   const status = (ls?.status ?? run.session.status) as string;
@@ -1039,7 +1062,11 @@ function RunBlock({
 
   const retry = () => {
     regen.mutate(
-      { sessionId: run.session.id, data: { model: null } },
+      {
+        sessionId: run.session.id,
+        // Pinned version for this prompt, else null = its current main (always the latest).
+        data: { model: null, promptVersionId: promptVersions[run.session.promptId]?.versionId ?? null },
+      },
       {
         onSuccess: () => {
           invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);

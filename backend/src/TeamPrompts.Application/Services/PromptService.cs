@@ -52,7 +52,9 @@ public sealed class PromptService(
         var dir = await users.GetAsync(ids, ct);
 
         var versions = prompt.Versions
-            .OrderBy(v => v.CreatedAt)
+            // ThenBy(Id) matches GenerationService.BuildVersionLookupAsync so the "vN" the detail UI
+            // numbers off this list agrees with the session badge even when CreatedAt ties.
+            .OrderBy(v => v.CreatedAt).ThenBy(v => v.Id)
             .Select(v => new PromptVersionDto(v.Id, v.PromptId, v.ParentVersionId, v.Content,
                 Attribution.Of(dir, v.AuthorUserId), v.Note, v.IsMain, v.CreatedAt))
             .ToList();
