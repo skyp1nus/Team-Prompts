@@ -59,7 +59,8 @@ public sealed class CreateGenerationRequestValidator : AbstractValidator<CreateG
     public CreateGenerationRequestValidator()
     {
         RuleFor(x => x.ScriptIds).NotEmpty().WithMessage("Select at least one script.");
-        RuleFor(x => x.PromptIds).NotEmpty().WithMessage("Select at least one prompt.");
+        RuleFor(x => x.Prompts).NotEmpty().WithMessage("Select at least one prompt.");
+        RuleForEach(x => x.Prompts).ChildRules(p => p.RuleFor(c => c.PromptId).NotEmpty());
         RuleFor(x => x.VariantCount).InclusiveBetween(1, 10).When(x => x.VariantCount.HasValue);
     }
 }

@@ -12,7 +12,7 @@ namespace TeamPrompts.Application.Services;
 public interface IGenerationService
 {
     Task<GenerationRunDto> CreateAsync(CreateGenerationRequest req, CancellationToken ct = default);
-    Task<SessionDto> RegenerateAsync(Guid sessionId, string? model, CancellationToken ct = default);
+    Task<SessionDto> RegenerateAsync(Guid sessionId, string? model, Guid? promptVersionId = null, CancellationToken ct = default);
     Task<IReadOnlyList<SessionWithResultsDto>> GetScriptSessionsAsync(Guid scriptId, CancellationToken ct = default);
     Task<SessionWithResultsDto?> GetSessionAsync(Guid sessionId, CancellationToken ct = default);
     Task<bool> ToggleFavoriteAsync(Guid resultId, bool on, CancellationToken ct = default);
@@ -44,7 +44,9 @@ public sealed class GenerationService(
     public async Task<GenerationRunDto> CreateAsync(CreateGenerationRequest req, CancellationToken ct = default)
     {
         var scriptIds = req.ScriptIds.Distinct().ToList();
-        var promptIds = req.PromptIds.Distinct().ToList();
+        // One entry per prompt — if the same prompt appears twice, the last version pick wins.
+        var promptInputs = req.Prompts.GroupBy(p => p.PromptId).Select(g => g.Last()).ToList();
+        var promptIds = promptInputs.Select(p => p.PromptId).ToList();
         if (scriptIds.Count == 0 || promptIds.Count == 0)
             throw new AppValidationException("Select at least one script and one prompt.");
 
@@ -53,11 +55,33 @@ public sealed class GenerationService(
             throw new NotFoundException("One or more scripts were not found.");
 
         var prompts = await db.Prompts.Where(p => promptIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.MainVersionId }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.MainVersionId, VersionIds = p.Versions.Select(v => v.Id).ToList() })
+            .ToListAsync(ct);
         if (prompts.Count != promptIds.Count)
             throw new NotFoundException("One or more prompts were not found.");
-        if (prompts.Any(p => p.MainVersionId is null))
-            throw new AppValidationException("A selected prompt has no main version.");
+        var promptById = prompts.ToDictionary(p => p.Id);
+
+        // Resolve the version for every prompt up front: an explicit pick (validated to belong to the
+        // prompt), else the prompt's current main version — so unpinned prompts always run the latest.
+        var versionByPrompt = new Dictionary<Guid, Guid>();
+        foreach (var input in promptInputs)
+        {
+            var p = promptById[input.PromptId];
+            if (input.PromptVersionId is { } vid)
+            {
+                if (!p.VersionIds.Contains(vid))
+                    throw new AppValidationException("A selected prompt version does not belong to that prompt.");
+                versionByPrompt[input.PromptId] = vid;
+            }
+            else if (p.MainVersionId is { } mid)
+            {
+                versionByPrompt[input.PromptId] = mid;
+            }
+            else
+            {
+                throw new AppValidationException("A selected prompt has no main version.");
+            }
+        }
 
         var settings = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var model = !string.IsNullOrWhiteSpace(req.Model)
@@ -74,14 +98,14 @@ public sealed class GenerationService(
 
         var sessions = new List<GenerationSession>();
         foreach (var sid in scriptIds)
-        foreach (var p in prompts)
+        foreach (var pid in promptIds)
         {
             sessions.Add(new GenerationSession
             {
                 RunId = run?.Id,
                 ScriptId = sid,
-                PromptId = p.Id,
-                PromptVersionId = p.MainVersionId!.Value,
+                PromptId = pid,
+                PromptVersionId = versionByPrompt[pid],
                 Model = model,
                 Status = SessionStatus.Queued,
                 CreatedByUserId = userId,
@@ -105,16 +129,36 @@ public sealed class GenerationService(
         return new GenerationRunDto(run?.Id, dtos);
     }
 
-    public async Task<SessionDto> RegenerateAsync(Guid sessionId, string? model, CancellationToken ct = default)
+    public async Task<SessionDto> RegenerateAsync(Guid sessionId, string? model, Guid? promptVersionId = null, CancellationToken ct = default)
     {
         var existing = await db.GenerationSessions.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sessionId, ct)
                        ?? throw new NotFoundException("Session not found.");
+
+        // Pick the version fresh: an explicit pick (validated to belong to this prompt), else the
+        // prompt's current main — never blindly copy the version the original session ran with.
+        var prompt = await db.Prompts.AsNoTracking()
+            .Where(p => p.Id == existing.PromptId)
+            .Select(p => new { p.MainVersionId, VersionIds = p.Versions.Select(v => v.Id).ToList() })
+            .FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Prompt not found.");
+
+        Guid versionId;
+        if (promptVersionId is { } vid)
+        {
+            if (!prompt.VersionIds.Contains(vid))
+                throw new AppValidationException("The selected prompt version does not belong to this prompt.");
+            versionId = vid;
+        }
+        else
+        {
+            versionId = prompt.MainVersionId ?? existing.PromptVersionId;
+        }
 
         var session = new GenerationSession
         {
             ScriptId = existing.ScriptId,
             PromptId = existing.PromptId,
-            PromptVersionId = existing.PromptVersionId,
+            PromptVersionId = versionId,
             Model = string.IsNullOrWhiteSpace(model) ? existing.Model : model!.Trim(),
             Status = SessionStatus.Queued,
             CreatedByUserId = currentUser.UserId ?? string.Empty,
@@ -142,9 +186,10 @@ public sealed class GenerationService(
                 .Select(r => r.HighlightedByUserId!))
             .Distinct();
         var dir = await users.GetAsync(userIds, ct);
+        var versions = await BuildVersionLookupAsync(sessions.Select(s => s.PromptId), ct);
         var me = currentUser.UserId;
         return sessions.Select(s => new SessionWithResultsDto(
-            MapSession(s, dir),
+            MapSession(s, dir, versions),
             s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me, dir)).ToList())).ToList();
     }
 
@@ -162,8 +207,9 @@ public sealed class GenerationService(
             .Concat(s.Results.Where(r => r.HighlightedByUserId is not null).Select(r => r.HighlightedByUserId!))
             .Distinct();
         var dir = await users.GetAsync(userIds, ct);
+        var versions = await BuildVersionLookupAsync([s.PromptId], ct);
         var me = currentUser.UserId;
-        return new SessionWithResultsDto(MapSession(s, dir),
+        return new SessionWithResultsDto(MapSession(s, dir, versions),
             s.Results.OrderBy(r => r.Index).Select(r => MapResult(r, me, dir)).ToList());
     }
 
@@ -359,15 +405,51 @@ public sealed class GenerationService(
             .Include(s => s.Prompt)
             .ToListAsync(ct);
         var dir = await users.GetAsync(sessions.Select(s => s.CreatedByUserId).Distinct(), ct);
+        var versions = await BuildVersionLookupAsync(sessions.Select(s => s.PromptId), ct);
         return sessions
             .OrderBy(s => ids.IndexOf(s.Id))
-            .Select(s => MapSession(s, dir))
+            .Select(s => MapSession(s, dir, versions))
             .ToList();
     }
 
-    private static SessionDto MapSession(GenerationSession s, IReadOnlyDictionary<string, UserRef> dir) =>
-        new(s.Id, s.RunId, s.ScriptId, s.PromptId, s.PromptVersionId, s.Prompt?.Name ?? string.Empty,
-            s.Model, s.Status, s.Error, Attribution.Of(dir, s.CreatedByUserId), s.CreatedAt, s.CompletedAt);
+    /// <summary>Ordinal/main/note for each prompt version, keyed by version id. The number is the
+    /// version's rank by CreatedAt within its prompt — matching the "vN" the prompt detail UI shows.</summary>
+    private async Task<IReadOnlyDictionary<Guid, VersionMeta>> BuildVersionLookupAsync(
+        IEnumerable<Guid> promptIds, CancellationToken ct)
+    {
+        var ids = promptIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, VersionMeta>();
+
+        var versions = await db.PromptVersions.AsNoTracking()
+            .Where(v => ids.Contains(v.PromptId))
+            // ThenBy(Id) gives a deterministic tie-break on equal CreatedAt so the "vN" rank here
+            // always matches PromptService.GetAsync's ordering (which the detail UI numbers off).
+            .OrderBy(v => v.CreatedAt).ThenBy(v => v.Id)
+            .Select(v => new { v.Id, v.PromptId, v.IsMain, v.Note })
+            .ToListAsync(ct);
+
+        var lookup = new Dictionary<Guid, VersionMeta>();
+        var counters = new Dictionary<Guid, int>();
+        foreach (var v in versions)
+        {
+            var n = counters.GetValueOrDefault(v.PromptId) + 1;
+            counters[v.PromptId] = n;
+            lookup[v.Id] = new VersionMeta(n, v.IsMain, v.Note);
+        }
+        return lookup;
+    }
+
+    private readonly record struct VersionMeta(int Number, bool IsMain, string? Note);
+
+    private static SessionDto MapSession(
+        GenerationSession s, IReadOnlyDictionary<string, UserRef> dir,
+        IReadOnlyDictionary<Guid, VersionMeta> versions)
+    {
+        var v = versions.GetValueOrDefault(s.PromptVersionId);
+        return new(s.Id, s.RunId, s.ScriptId, s.PromptId, s.PromptVersionId, s.Prompt?.Name ?? string.Empty,
+            s.Model, s.Status, s.Error, Attribution.Of(dir, s.CreatedByUserId), s.CreatedAt, s.CompletedAt,
+            v.Number, v.IsMain, v.Note);
+    }
 
     private static GenerationResultDto MapResult(GenerationResult r, string? me, IReadOnlyDictionary<string, UserRef> dir) =>
         new(r.Id, r.SessionId, r.Index, r.Content, r.Kind, r.CreatedAt,

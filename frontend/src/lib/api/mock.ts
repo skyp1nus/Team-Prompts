@@ -128,6 +128,9 @@ function session(
       createdBy: ref("Mara A."),
       createdAt: iso(1),
       completedAt: iso(1),
+      promptVersionNumber: prompt.versions.length,
+      isMainVersion: true,
+      promptVersionNote: null,
     },
     results: makeResults(id, prompt.kind, count, favIdx, hiIdx),
   };
@@ -361,11 +364,12 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   // generation
   if (url === "/api/generation" && method === "POST") {
     const scriptIds = (body.scriptIds as string[]) ?? [];
-    const promptIds = (body.promptIds as string[]) ?? [];
+    // Body shape is now { prompts: [{ promptId, promptVersionId }] } (was promptIds: string[]).
+    const prompts = (body.prompts as { promptId: string; promptVersionId: string | null }[]) ?? [];
     const model = (body.model as string) ?? defaultModel();
     scriptIds.forEach((sid) => {
-      promptIds.forEach((pid) => {
-        const p = store.prompts.find((x) => x.id === pid);
+      prompts.forEach(({ promptId }) => {
+        const p = store.prompts.find((x) => x.id === promptId);
         if (!p) return;
         (store.sessionsByScript[sid] ??= []).push(session(sid, p, model, 5));
       });

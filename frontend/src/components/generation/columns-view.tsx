@@ -7,10 +7,12 @@ import { usePostApiGenerationSessionsSessionIdRegenerate } from "@/api/endpoints
 import { SessionStatus, type SessionWithResultsDto } from "@/api/model";
 import { ResultCard } from "@/components/generation/result-card";
 import { ModelBadge } from "@/components/generation/model-badge";
+import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 import type { Group } from "@/components/generation/map-view";
 
 const DOTS = ["var(--primary)", "var(--chart-2)", "var(--chart-1)", "var(--chart-4)", "var(--chart-3)", "var(--chart-5)"];
@@ -44,6 +46,7 @@ function SessionColumn({
 }) {
   const { live } = useGenerationStream();
   const qc = useQueryClient();
+  const { promptVersions } = useWorkspace();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const ls = live[item.session.id];
   const status = (ls?.status ?? item.session.status) as string;
@@ -57,7 +60,11 @@ function SessionColumn({
 
   const retry = () => {
     regen.mutate(
-      { sessionId: item.session.id, data: { model: null } },
+      {
+        sessionId: item.session.id,
+        // Pinned version for this prompt, else null = its current main (always the latest).
+        data: { model: null, promptVersionId: promptVersions[item.session.promptId]?.versionId ?? null },
+      },
       {
         onSuccess: () => invalidatePath(qc, `/api/scripts/${scriptId}/sessions`),
         onError: () => toast.error("Couldn’t retry"),
@@ -73,7 +80,8 @@ function SessionColumn({
           <span className="size-2 shrink-0 rounded-full" style={{ background: dot }} />
           <span className="truncate text-[13px] font-semibold">{item.session.promptName}</span>
         </div>
-        <div className="mt-1.5 ml-4 flex items-center gap-2">
+        <div className="mt-1.5 ml-4 flex flex-wrap items-center gap-2">
+          <VersionBadge number={item.session.promptVersionNumber} isMain={item.session.isMainVersion} small />
           <ModelBadge model={item.session.model} small />
           <span className="text-[11px] text-faint">
             {streaming ? "generating…" : `${results.length} variants`}
