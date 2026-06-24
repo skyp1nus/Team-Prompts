@@ -42,6 +42,9 @@ const MIN_Z = 0.3;
 const MAX_Z = 2.5;
 const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, +z.toFixed(3)));
 
+/** How many characters a collapsed result row should fit before truncating. */
+const PREVIEW_MAX = 100;
+
 type Transform = { z: number; tx: number; ty: number };
 type Hover = { type: "prompt" | "col"; id: string } | null;
 type Edge = {
@@ -543,6 +546,14 @@ function OutputNode({
   // the very latest attempt — so repeated rate-limited retries don't stack identical blocks.
   const displayed = ordered.filter((run, i) => run.results.length > 0 || isActive(run) || i === 0);
   const anyStreaming = ordered.some(isActive);
+
+  // Size the card to this block's OWN longest result (capped at PREVIEW_MAX chars), not always to a
+  // full 100 — so short-result blocks stay compact. Probe uses the real text for proportional-font
+  // accuracy; ties broken by raw length.
+  const longestContent = displayed
+    .flatMap((run) => run.results)
+    .reduce((longest, r) => (r.content.length > longest.length ? r.content : longest), "");
+  const probeText = longestContent.slice(0, PREVIEW_MAX);
   // The newest run already shows its own "Try again" when it failed/emptied — so don't double up
   // with the header's generate button in that case.
   const newestFailed = !!ordered[0] && !isActive(ordered[0]) && ordered[0].results.length === 0;
@@ -573,7 +584,7 @@ function OutputNode({
       data-ec={dot}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
-      className="relative z-[2] w-[360px] shrink-0"
+      className="relative z-[2] w-fit shrink-0"
     >
       {/* fn-card — results body */}
       <div
@@ -584,6 +595,20 @@ function OutputNode({
         )}
       >
         <div className="flex flex-col gap-1.5 p-2.5">
+          {/* Invisible sizer: makes the card exactly wide enough for THIS block's longest result
+              (≤ PREVIEW_MAX chars), mirroring the real row's chevron + count + star. */}
+          {probeText && (
+            <div aria-hidden className="pointer-events-none h-0 overflow-hidden" data-width-probe>
+              <div className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2">
+                <span className="size-3.5 shrink-0" />
+                <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">
+                  {probeText}
+                </span>
+                <span className="shrink-0 text-[10px] tabular-nums">000</span>
+                <span className="size-[22px] shrink-0" />
+              </div>
+            </div>
+          )}
           {displayed.map((run, i) => (
             <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
               {displayed.length > 1 && (
@@ -755,6 +780,10 @@ function ResultRow({
   const copyEvent = usePostApiResultsResultIdCopy();
   const isFav = result.isFavorite;
 
+  // Collapsed rows show at most PREVIEW_MAX chars; the card is sized to fit exactly that many.
+  const preview =
+    result.content.length > PREVIEW_MAX ? `${result.content.slice(0, PREVIEW_MAX)}…` : result.content;
+
   const invalidate = () =>
     invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
 
@@ -806,7 +835,7 @@ function ResultRow({
           )}
         />
         <span className={cn("min-w-0 flex-1 text-[12.5px] leading-snug font-medium", !open && "truncate")}>
-          {result.content}
+          {open ? result.content : preview}
         </span>
         <span className={cn("shrink-0 text-[10px] text-faint tabular-nums", open && "mt-[3px]")}>
           {result.content.length}
