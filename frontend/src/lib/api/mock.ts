@@ -285,6 +285,8 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   if (mm && method === "GET") return reply<SessionWithResultsDto[]>(store.sessionsByScript[mm[1]] ?? []);
   mm = m(/^\/api\/scripts\/([^/]+)\/tray$/);
   if (mm && method === "GET") return reply<TrayItemDto[]>(trayFor(mm[1]));
+  mm = m(/^\/api\/scripts\/([^/]+)\/canvas$/);
+  if (mm && method === "GET") return reply<unknown[]>([]);
   mm = m(/^\/api\/scripts\/([^/]+)$/);
   if (mm && method === "GET") {
     const s = store.scripts.find((x) => x.id === mm![1]);

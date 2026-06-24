@@ -1213,6 +1213,9 @@ function ResultRow({
       )}
     >
       <div
+        // data-no-drag: this row toggles expand on click — without it the canvas drag handler captures
+        // the pointer (setPointerCapture) and the click never reaches onClick, so the card won't expand.
+        data-no-drag
         className={cn(
           "flex cursor-pointer gap-2.5 px-2.5 py-2",
           open ? "items-start" : "items-center",
