@@ -508,7 +508,62 @@ export function useGetApiScriptsIdSessions<TData = Awaited<ReturnType<typeof get
 
 
 
-export const getApiScriptsIdTray = (
+export const deleteApiScriptsIdSessions = (
+    id: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/scripts/${id}/sessions`, method: 'DELETE', signal
+    },
+      options);
+    }
+
+
+
+export const getDeleteApiScriptsIdSessionsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteApiScriptsIdSessions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteApiScriptsIdSessions(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiScriptsIdSessionsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>>
+
+    export type DeleteApiScriptsIdSessionsMutationError = ErrorType<unknown>
+
+    export const useDeleteApiScriptsIdSessions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiScriptsIdSessions>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiScriptsIdSessionsMutationOptions(options), queryClient);
+    }
+    export const getApiScriptsIdTray = (
     id: string,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {

@@ -121,6 +121,12 @@ public sealed class GenerationExecutor(
         }
         catch (Exception ex)
         {
+            // The run may have been deleted mid-stream (user removed it from the canvas). In that case
+            // our writes FK-fail against the vanished session; treat it as a clean no-op rather than a
+            // second exception (a 0-row UPDATE on the deleted, still-tracked session) escaping here.
+            if (!await db.GenerationSessions.AnyAsync(s => s.Id == sessionId, CancellationToken.None))
+                return;
+
             session.Status = SessionStatus.Failed;
             session.Error = ex.Message;
             await db.SaveChangesAsync(CancellationToken.None);

@@ -52,4 +52,14 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TrayItemDto>>> Tray(
         Guid id, [FromServices] IGenerationService generation, CancellationToken ct)
         => Ok(await generation.GetTrayAsync(id, ct));
+
+    /// <summary>Clear the whole generation canvas for this script — deletes every run + result.</summary>
+    [HttpDelete("{id:guid}/sessions")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ClearSessions(
+        Guid id, [FromServices] IGenerationService generation, CancellationToken ct)
+    {
+        await generation.ClearScriptSessionsAsync(id, ct);
+        return NoContent();
+    }
 }

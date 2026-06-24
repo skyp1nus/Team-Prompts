@@ -255,3 +255,113 @@ export function useGetApiGenerationSessionsSessionId<TData = Awaited<ReturnType<
 
 
 
+export const deleteApiGenerationSessionsSessionId = (
+    sessionId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/generation/sessions/${sessionId}`, method: 'DELETE', signal
+    },
+      options);
+    }
+
+
+
+export const getDeleteApiGenerationSessionsSessionIdMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>, TError,{sessionId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>, TError,{sessionId: string}, TContext> => {
+
+const mutationKey = ['deleteApiGenerationSessionsSessionId'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>, {sessionId: string}> = (props) => {
+          const {sessionId} = props ?? {};
+
+          return  deleteApiGenerationSessionsSessionId(sessionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiGenerationSessionsSessionIdMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>>
+
+    export type DeleteApiGenerationSessionsSessionIdMutationError = ErrorType<unknown>
+
+    export const useDeleteApiGenerationSessionsSessionId = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>, TError,{sessionId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiGenerationSessionsSessionId>>,
+        TError,
+        {sessionId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiGenerationSessionsSessionIdMutationOptions(options), queryClient);
+    }
+    export const deleteApiGenerationRunsRunId = (
+    runId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/generation/runs/${runId}`, method: 'DELETE', signal
+    },
+      options);
+    }
+
+
+
+export const getDeleteApiGenerationRunsRunIdMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>, TError,{runId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>, TError,{runId: string}, TContext> => {
+
+const mutationKey = ['deleteApiGenerationRunsRunId'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>, {runId: string}> = (props) => {
+          const {runId} = props ?? {};
+
+          return  deleteApiGenerationRunsRunId(runId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteApiGenerationRunsRunIdMutationResult = NonNullable<Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>>
+
+    export type DeleteApiGenerationRunsRunIdMutationError = ErrorType<unknown>
+
+    export const useDeleteApiGenerationRunsRunId = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>, TError,{runId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteApiGenerationRunsRunId>>,
+        TError,
+        {runId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteApiGenerationRunsRunIdMutationOptions(options), queryClient);
+    }

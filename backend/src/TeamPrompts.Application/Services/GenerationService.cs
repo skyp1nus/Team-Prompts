@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TeamPrompts.Application.Abstractions;
 using TeamPrompts.Application.Common;
 using TeamPrompts.Application.Dtos;
@@ -17,6 +18,15 @@ public interface IGenerationService
     Task<bool> ToggleFavoriteAsync(Guid resultId, bool on, CancellationToken ct = default);
     Task RecordCopyAsync(Guid resultId, CancellationToken ct = default);
     Task<IReadOnlyList<TrayItemDto>> GetTrayAsync(Guid scriptId, CancellationToken ct = default);
+
+    /// <summary>Deletes a single generation run (one session + its results/favorites/copies via cascade).</summary>
+    Task DeleteSessionAsync(Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>Deletes a batch run and every session it grouped.</summary>
+    Task DeleteRunAsync(Guid runId, CancellationToken ct = default);
+
+    /// <summary>Wipes the whole canvas for a script: every session + result. Returns how many runs were removed.</summary>
+    Task<int> ClearScriptSessionsAsync(Guid scriptId, CancellationToken ct = default);
 }
 
 public sealed class GenerationService(
@@ -24,7 +34,8 @@ public sealed class GenerationService(
     ICurrentUser currentUser,
     IUserDirectory users,
     IJobScheduler scheduler,
-    IActivityLogger activity) : IGenerationService
+    IActivityLogger activity,
+    ILogger<GenerationService> logger) : IGenerationService
 {
     public async Task<GenerationRunDto> CreateAsync(CreateGenerationRequest req, CancellationToken ct = default)
     {
@@ -203,6 +214,99 @@ public sealed class GenerationService(
                 f.GenerationResult.Session.Model,
                 f.GenerationResult.CreatedAt))
             .ToListAsync(ct);
+    }
+
+    public async Task DeleteSessionAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        var session = await db.GenerationSessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct)
+                      ?? throw new NotFoundException("Generation session not found.");
+
+        var scriptId = session.ScriptId;
+        var promptId = session.PromptId;
+        var model = session.Model;
+        var runId = session.RunId;
+
+        db.GenerationSessions.Remove(session); // DB cascade removes results → favorites/copies
+        await db.SaveChangesAsync(ct);
+
+        if (runId is { } rid)
+            await RemoveOrphanRunsAsync([rid], ct);
+
+        logger.LogInformation(
+            "Deleted generation session {SessionId} (script {ScriptId}, model {Model}) by user {UserId}",
+            sessionId, scriptId, model, currentUser.UserId);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.GenerationSessionDeleted,
+            TargetType: ActivityTargetType.GenerationSession, TargetId: sessionId,
+            Summary: $"Deleted a generation run ({model})",
+            Model: model,
+            Metadata: JsonSerializer.Serialize(new { scriptId, promptId, runId })), ct);
+    }
+
+    public async Task DeleteRunAsync(Guid runId, CancellationToken ct = default)
+    {
+        var run = await db.GenerationRuns
+            .Include(r => r.Sessions)
+            .FirstOrDefaultAsync(r => r.Id == runId, ct)
+            ?? throw new NotFoundException("Run not found.");
+
+        var sessionCount = run.Sessions.Count;
+        if (sessionCount > 0)
+            db.GenerationSessions.RemoveRange(run.Sessions); // DB cascade removes results
+        db.GenerationRuns.Remove(run);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "Deleted generation run {RunId} with {SessionCount} session(s) by user {UserId}",
+            runId, sessionCount, currentUser.UserId);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.GenerationRunDeleted,
+            TargetType: ActivityTargetType.GenerationRun, TargetId: runId,
+            Summary: $"Deleted a batch run ({sessionCount} generation{(sessionCount == 1 ? "" : "s")})",
+            Metadata: JsonSerializer.Serialize(new { runId, sessionCount })), ct);
+    }
+
+    public async Task<int> ClearScriptSessionsAsync(Guid scriptId, CancellationToken ct = default)
+    {
+        if (!await db.Scripts.AnyAsync(s => s.Id == scriptId, ct))
+            throw new NotFoundException("Script not found.");
+
+        var sessions = await db.GenerationSessions.Where(s => s.ScriptId == scriptId).ToListAsync(ct);
+        var count = sessions.Count;
+        var runIds = sessions.Where(s => s.RunId is not null).Select(s => s.RunId!.Value).Distinct().ToList();
+
+        if (count > 0)
+        {
+            db.GenerationSessions.RemoveRange(sessions); // DB cascade removes results → favorites/copies
+            await db.SaveChangesAsync(ct);
+            await RemoveOrphanRunsAsync(runIds, ct);
+        }
+
+        logger.LogInformation(
+            "Cleared {Count} generation session(s) for script {ScriptId} by user {UserId}",
+            count, scriptId, currentUser.UserId);
+
+        await activity.LogAsync(new ActivityLogEntry(
+            ActivityEventType.ScriptGenerationsCleared,
+            TargetType: ActivityTargetType.Script, TargetId: scriptId,
+            Summary: $"Cleared the generation canvas ({count} run{(count == 1 ? "" : "s")})",
+            Metadata: JsonSerializer.Serialize(new { scriptId, sessionCount = count })), ct);
+
+        return count;
+    }
+
+    /// <summary>Removes any of the given batch runs left with no sessions after a deletion — keeps the table tidy.</summary>
+    private async Task RemoveOrphanRunsAsync(IReadOnlyCollection<Guid> runIds, CancellationToken ct)
+    {
+        if (runIds.Count == 0) return;
+        var orphans = await db.GenerationRuns
+            .Where(r => runIds.Contains(r.Id) && !r.Sessions.Any())
+            .ToListAsync(ct);
+        if (orphans.Count == 0) return;
+        db.GenerationRuns.RemoveRange(orphans);
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task<IReadOnlyList<SessionDto>> BuildSessionDtos(List<Guid> ids, CancellationToken ct)

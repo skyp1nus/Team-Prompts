@@ -31,6 +31,9 @@ export const ACTIVITY_META: Record<ActivityEventType, { label: string; icon: Luc
   [ActivityEventType.ResultCopied]: { label: "Copied a result", icon: Copy, tone: "muted" },
   [ActivityEventType.ResultFavorited]: { label: "Saved to tray", icon: Star, tone: "primary" },
   [ActivityEventType.ResultUnfavorited]: { label: "Removed from tray", icon: Star, tone: "muted" },
+  [ActivityEventType.GenerationSessionDeleted]: { label: "Deleted a generation run", icon: Trash2, tone: "danger" },
+  [ActivityEventType.GenerationRunDeleted]: { label: "Deleted a batch run", icon: Trash2, tone: "danger" },
+  [ActivityEventType.ScriptGenerationsCleared]: { label: "Cleared the canvas", icon: Trash2, tone: "danger" },
 };
 
 export const TONE_CLASS: Record<Tone, string> = {

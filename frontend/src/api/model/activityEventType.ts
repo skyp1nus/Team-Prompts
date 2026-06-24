@@ -23,4 +23,7 @@ export const ActivityEventType = {
   ResultCopied: 'ResultCopied',
   ResultFavorited: 'ResultFavorited',
   ResultUnfavorited: 'ResultUnfavorited',
+  GenerationSessionDeleted: 'GenerationSessionDeleted',
+  GenerationRunDeleted: 'GenerationRunDeleted',
+  ScriptGenerationsCleared: 'ScriptGenerationsCleared',
 } as const;

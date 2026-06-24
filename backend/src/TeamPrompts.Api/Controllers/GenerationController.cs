@@ -23,4 +23,23 @@ public sealed class GenerationController(IGenerationService generation) : Contro
     [HttpGet("sessions/{sessionId:guid}")]
     public async Task<ActionResult<SessionWithResultsDto>> GetSession(Guid sessionId, CancellationToken ct)
         => await generation.GetSessionAsync(sessionId, ct) is { } dto ? Ok(dto) : NotFound();
+
+    /// <summary>Delete one generation run (a single session + its results).</summary>
+    [HttpDelete("sessions/{sessionId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> DeleteSession(Guid sessionId, CancellationToken ct)
+    {
+        await generation.DeleteSessionAsync(sessionId, ct);
+        return NoContent();
+    }
+
+    /// <summary>Delete a whole batch run and every session it grouped. API-level (batch runs span
+    /// scripts); the per-script canvas UI deletes by session and auto-prunes emptied runs.</summary>
+    [HttpDelete("runs/{runId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> DeleteRun(Guid runId, CancellationToken ct)
+    {
+        await generation.DeleteRunAsync(runId, ct);
+        return NoContent();
+    }
 }
