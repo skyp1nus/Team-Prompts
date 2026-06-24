@@ -23,4 +23,8 @@ export interface SessionDto {
   createdAt: string;
   /** @nullable */
   completedAt: string | null;
+  promptVersionNumber: number;
+  isMainVersion: boolean;
+  /** @nullable */
+  promptVersionNote: string | null;
 }
