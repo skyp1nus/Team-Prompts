@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped<IScriptService, ScriptService>();
         services.AddScoped<IPromptService, PromptService>();
         services.AddScoped<IGenerationService, GenerationService>();
+        services.AddScoped<ICanvasService, CanvasService>();
         services.AddScoped<IGenerationExecutor, GenerationExecutor>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IActivityLogger, ActivityLogger>();

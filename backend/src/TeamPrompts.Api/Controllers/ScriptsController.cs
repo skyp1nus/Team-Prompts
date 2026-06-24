@@ -62,4 +62,32 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
         await generation.ClearScriptSessionsAsync(id, ct);
         return NoContent();
     }
+
+    // ---- free-form map layout (shared block positions) ----
+
+    /// <summary>Saved block positions for this script's map. Empty = auto-layout.</summary>
+    [HttpGet("{id:guid}/canvas")]
+    public async Task<ActionResult<IReadOnlyList<CanvasNodeDto>>> Canvas(
+        Guid id, [FromServices] ICanvasService canvas, CancellationToken ct)
+        => Ok(await canvas.GetAsync(id, ct));
+
+    /// <summary>Upsert one or more block positions (sent when a block is dragged). Shared with the team.</summary>
+    [HttpPut("{id:guid}/canvas")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> SaveCanvas(
+        Guid id, SaveCanvasRequest req, [FromServices] ICanvasService canvas, CancellationToken ct)
+    {
+        await canvas.SaveAsync(id, req.Nodes, ct);
+        return NoContent();
+    }
+
+    /// <summary>Reset the map back to auto-layout — clears every saved position for this script.</summary>
+    [HttpDelete("{id:guid}/canvas")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ResetCanvas(
+        Guid id, [FromServices] ICanvasService canvas, CancellationToken ct)
+    {
+        await canvas.ResetAsync(id, ct);
+        return NoContent();
+    }
 }
