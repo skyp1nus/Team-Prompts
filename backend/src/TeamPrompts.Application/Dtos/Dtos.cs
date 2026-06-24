@@ -39,13 +39,18 @@ public sealed record UpdatePromptRequest(string Name);
 public sealed record CreateVersionRequest(Guid ParentVersionId, string Content, string? Note);
 
 // ---- Generation ----
+/// <summary>One prompt picked for a run. <c>PromptVersionId</c> null → use the prompt's current
+/// main version (resolved at run time, so it's always the latest the team promoted).</summary>
+public sealed record GenerationPromptInput(Guid PromptId, Guid? PromptVersionId = null);
+
 public sealed record CreateGenerationRequest(
-    IReadOnlyList<Guid> ScriptIds, IReadOnlyList<Guid> PromptIds, string? Model, int? VariantCount);
+    IReadOnlyList<Guid> ScriptIds, IReadOnlyList<GenerationPromptInput> Prompts, string? Model, int? VariantCount);
 
 public sealed record SessionDto(
     Guid Id, Guid? RunId, Guid ScriptId, Guid PromptId, Guid PromptVersionId,
     string PromptName, string Model, SessionStatus Status, string? Error,
-    UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
+    UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt,
+    int PromptVersionNumber, bool IsMainVersion, string? PromptVersionNote);
 
 public sealed record GenerationResultDto(
     Guid Id, Guid SessionId, int Index, string Content, ResultKind? Kind,
@@ -56,7 +61,9 @@ public sealed record SessionWithResultsDto(SessionDto Session, IReadOnlyList<Gen
 
 public sealed record GenerationRunDto(Guid? RunId, IReadOnlyList<SessionDto> Sessions);
 
-public sealed record RegenerateRequest(string? Model);
+/// <summary>Regenerate one session. <c>PromptVersionId</c> null → use the prompt's current main
+/// version (so a regen always picks up the latest promoted prompt, never the stale one it started with).</summary>
+public sealed record RegenerateRequest(string? Model, Guid? PromptVersionId = null);
 
 // ---- Canvas layout (free-form map block positions, team-wide / shared) ----
 /// <summary>One block's position on a script's map. <c>NodeKey</c> is the stable block id

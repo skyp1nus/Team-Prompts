@@ -34,6 +34,7 @@ export function CenterPanel() {
   const {
     activeScriptId,
     selectedPromptIds,
+    promptVersions,
     batchScriptIds,
     runModels,
     view,
@@ -68,13 +69,16 @@ export function CenterPanel() {
   const onGenerate = async () => {
     if (!canGenerate) return;
     const models = runModels.length > 0 ? runModels : [null];
+    // Resolve each prompt's version now: a pinned version, else null = the prompt's current main.
+    const prompts = selectedPromptIds.map((promptId) => ({
+      promptId,
+      promptVersionId: promptVersions[promptId]?.versionId ?? null,
+    }));
     setGenerating(true);
     // Fan out one request per model; settle them all so a single failure
     // never blocks invalidation/feedback for the runs that started.
     const settled = await Promise.allSettled(
-      models.map((model) =>
-        gen.mutateAsync({ data: { scriptIds, promptIds: selectedPromptIds, model, variantCount: null } }),
-      ),
+      models.map((model) => gen.mutateAsync({ data: { scriptIds, prompts, model, variantCount: null } })),
     );
     setGenerating(false);
     if (activeScriptId) invalidatePath(qc, `/api/scripts/${activeScriptId}/sessions`);
