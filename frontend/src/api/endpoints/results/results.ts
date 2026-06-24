@@ -132,61 +132,6 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getDeleteApiResultsResultIdFavoriteMutationOptions(options), queryClient);
     }
-    export const postApiResultsResultIdCopy = (
-    resultId: string,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<void>(
-      {url: `/api/results/${resultId}/copy`, method: 'POST', signal
-    },
-      options);
-    }
-
-
-
-export const getPostApiResultsResultIdCopyMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext> => {
-
-const mutationKey = ['postApiResultsResultIdCopy'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, {resultId: string}> = (props) => {
-          const {resultId} = props ?? {};
-
-          return  postApiResultsResultIdCopy(resultId,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PostApiResultsResultIdCopyMutationResult = NonNullable<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>>
-
-    export type PostApiResultsResultIdCopyMutationError = ErrorType<unknown>
-
-    export const usePostApiResultsResultIdCopy = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof postApiResultsResultIdCopy>>,
-        TError,
-        {resultId: string},
-        TContext
-      > => {
-      return useMutation(getPostApiResultsResultIdCopyMutationOptions(options), queryClient);
-    }
     export const postApiResultsResultIdHighlight = (
     resultId: string,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
@@ -296,4 +241,59 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDeleteApiResultsResultIdHighlightMutationOptions(options), queryClient);
+    }
+    export const postApiResultsResultIdCopy = (
+    resultId: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/results/${resultId}/copy`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getPostApiResultsResultIdCopyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext> => {
+
+const mutationKey = ['postApiResultsResultIdCopy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, {resultId: string}> = (props) => {
+          const {resultId} = props ?? {};
+
+          return  postApiResultsResultIdCopy(resultId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiResultsResultIdCopyMutationResult = NonNullable<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>>
+
+    export type PostApiResultsResultIdCopyMutationError = ErrorType<unknown>
+
+    export const usePostApiResultsResultIdCopy = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiResultsResultIdCopy>>, TError,{resultId: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiResultsResultIdCopy>>,
+        TError,
+        {resultId: string},
+        TContext
+      > => {
+      return useMutation(getPostApiResultsResultIdCopyMutationOptions(options), queryClient);
     }

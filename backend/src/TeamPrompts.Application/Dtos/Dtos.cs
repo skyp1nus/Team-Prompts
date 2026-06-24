@@ -58,6 +58,14 @@ public sealed record GenerationRunDto(Guid? RunId, IReadOnlyList<SessionDto> Ses
 
 public sealed record RegenerateRequest(string? Model);
 
+// ---- Canvas layout (free-form map block positions, team-wide / shared) ----
+/// <summary>One block's position on a script's map. <c>NodeKey</c> is the stable block id
+/// (<c>prompt:{promptId}</c> or <c>col:{promptId}::{model}</c>).</summary>
+public sealed record CanvasNodeDto(string NodeKey, double X, double Y);
+
+/// <summary>Upsert one or more block positions for a script's canvas (sent on drag end).</summary>
+public sealed record SaveCanvasRequest(IReadOnlyList<CanvasNodeDto> Nodes);
+
 /// <summary>An item in the bottom selection tray = a favorited result for the active script.</summary>
 public sealed record TrayItemDto(
     Guid ResultId, Guid SessionId, string Content, ResultKind? Kind,

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TeamPrompts.Application.Common;
 
 namespace TeamPrompts.Api.Common;
@@ -26,6 +27,8 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, I
             AppValidationException => (StatusCodes.Status400BadRequest, ex.Message),
             FluentValidation.ValidationException => (StatusCodes.Status400BadRequest, ex.Message),
             InvalidOperationException => (StatusCodes.Status400BadRequest, ex.Message),
+            // A concurrent write lost a unique-index race — retryable, not a server fault.
+            DbUpdateException => (StatusCodes.Status409Conflict, "The change conflicted with a concurrent update — please retry."),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred."),
         };
 
