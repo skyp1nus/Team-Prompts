@@ -1205,7 +1205,9 @@ function ResultRow({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[10px] border border-border bg-card transition-[color,background-color,border-color,opacity]",
+        // w-0 min-w-full: render at the card's width but contribute 0 to its max-content, so an
+        // expanded (full-text) row wraps instead of widening the card past the 100-char probe.
+        "w-0 min-w-full overflow-hidden rounded-[10px] border border-border bg-card transition-[color,background-color,border-color,opacity]",
         isFav && "border-primary bg-primary/[0.06]",
         isHi && "ring-1 ring-rose-400/60",
         open && "border-border-strong",
