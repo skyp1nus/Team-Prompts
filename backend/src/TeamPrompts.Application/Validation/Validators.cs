@@ -63,6 +63,16 @@ public sealed class UpdatePromptRequestValidator : AbstractValidator<UpdatePromp
     public UpdatePromptRequestValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
 }
 
+public sealed class ReorderPromptsRequestValidator : AbstractValidator<ReorderPromptsRequest>
+{
+    public ReorderPromptsRequestValidator()
+    {
+        RuleFor(x => x.WorkspaceId).NotEmpty();
+        RuleFor(x => x.OrderedIds).NotNull();
+        RuleForEach(x => x.OrderedIds).NotEmpty();
+    }
+}
+
 public sealed class CreateVersionRequestValidator : AbstractValidator<CreateVersionRequest>
 {
     public CreateVersionRequestValidator()

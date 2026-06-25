@@ -30,6 +30,14 @@ public sealed class PromptsController(IPromptService prompts) : ControllerBase
     public async Task<ActionResult<PromptDetailDto>> Rename(Guid id, UpdatePromptRequest req, CancellationToken ct)
         => Ok(await prompts.RenameAsync(id, req.Name, ct));
 
+    /// <summary>Set the team-wide top-to-bottom order of a workspace's prompts (drives the map layout).</summary>
+    [HttpPut("reorder")]
+    public async Task<IActionResult> Reorder(ReorderPromptsRequest req, CancellationToken ct)
+    {
+        await prompts.ReorderAsync(req, ct);
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

@@ -43,7 +43,7 @@ import {
   useGetApiScriptsIdCanvas,
   usePutApiScriptsIdCanvas,
 } from "@/api/endpoints/scripts/scripts";
-import { SessionStatus, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
+import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
@@ -225,27 +225,28 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
      this component (keyed on scriptId), so per-script state starts clean without a reset effect. */
   const canvasReady = !scriptId || savedNodes !== undefined;
 
-  /* Resolve positions: keep already-placed blocks where they are, seed any new/unplaced block from
-     its saved position or the auto-grid, and forget blocks that no longer exist. Block sizes are
-     measured from the DOM (rendered hidden until placed), so the seed never overlaps. */
+  /* Resolve positions: a block that was dragged (has a saved position) stays put — manual placement
+     is shared and always wins. Every other block is *auto*, so it follows the prompt order via the
+     grid and reflows whenever that order (or the block set) changes. An actively-dragged block is left
+     alone. Block sizes are measured from the DOM (rendered hidden until placed), so seeds never overlap.
+     This runs on structural changes (reorder/add/remove encode into `structuralKey`) and on saved-node
+     changes — not on every render — so streaming a token doesn't reshuffle the canvas. */
   useLayoutEffect(() => {
     if (!canvasReady) return;
     setPos((prev) => {
-      const next = { ...prev };
-      let changed = false;
       const keySet = new Set(nodeKeys);
-      for (const k of Object.keys(next))
-        if (!keySet.has(k)) {
-          delete next[k];
-          changed = true;
-        }
-      const unplaced = nodeKeys.filter((k) => next[k] == null);
-      if (unplaced.length) {
-        const grid = computeAutoGrid(groups, sizeOf);
-        for (const k of unplaced) {
-          next[k] = serverPos[k] ?? grid[k] ?? { x: PAD_X, y: PAD_Y };
-          changed = true;
-        }
+      const grid = computeAutoGrid(groups, sizeOf);
+      const next: Record<string, XY> = {};
+      // A removed block is a change even though it never makes it into `next`.
+      let changed = Object.keys(prev).some((k) => !keySet.has(k));
+      for (const k of nodeKeys) {
+        const target =
+          dragRef.current?.key === k
+            ? prev[k] ?? grid[k] ?? { x: PAD_X, y: PAD_Y } // don't yank a block out from under a drag
+            : serverPos[k] ?? grid[k] ?? { x: PAD_X, y: PAD_Y };
+        next[k] = target;
+        const p = prev[k];
+        if (!p || p.x !== target.x || p.y !== target.y) changed = true;
       }
       return changed ? next : prev;
     });
@@ -350,12 +351,27 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   const persistPositions = useCallback(
     (moved: { nodeKey: string; x: number; y: number }[]) => {
       if (!scriptId || moved.length === 0) return;
+      // Optimistically fold the drop into the shared canvas cache so these blocks count as *manual*
+      // placements immediately. Otherwise a structural change (a new model column, or the team
+      // reordering prompts) would reflow them back to the auto-grid before the canvas query refetches.
+      qc.setQueryData<CanvasNodeDto[]>(getGetApiScriptsIdCanvasQueryKey(scriptId), (prev) => {
+        const byKey = new Map((prev ?? []).map((n) => [n.nodeKey, n]));
+        for (const m of moved) byKey.set(m.nodeKey, { nodeKey: m.nodeKey, x: m.x, y: m.y });
+        return [...byKey.values()];
+      });
       saveCanvas.mutate(
         { id: scriptId, data: { nodes: moved } },
-        { onError: () => toast.error("Couldn’t save the layout") },
+        {
+          onError: () => {
+            toast.error("Couldn’t save the layout");
+            // Roll the optimistic write back to the server's truth so a failed save doesn't leave the
+            // block pinned (counted as manual, excluded from auto-reflow) until the next incidental refetch.
+            qc.invalidateQueries({ queryKey: getGetApiScriptsIdCanvasQueryKey(scriptId) });
+          },
+        },
       );
     },
-    [scriptId, saveCanvas],
+    [scriptId, saveCanvas, qc],
   );
 
   const onNodePointerDown = (key: string) => (e: React.PointerEvent<HTMLDivElement>) => {

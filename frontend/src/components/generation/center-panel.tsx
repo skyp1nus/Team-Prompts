@@ -2,9 +2,10 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Columns3, Heart, LayoutGrid, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
+import { useGetApiPrompts } from "@/api/endpoints/prompts/prompts";
 import {
   getGetApiScriptsQueryKey,
   useDeleteApiScriptsIdSessions,
@@ -32,6 +33,7 @@ const VIEWS: { k: CenterView; label: string; Icon: typeof Columns3 }[] = [
 export function CenterPanel() {
   const qc = useQueryClient();
   const {
+    activeWorkspaceId,
     activeScriptId,
     selectedPromptIds,
     promptVersions,
@@ -51,6 +53,18 @@ export function CenterPanel() {
     query: { enabled: !!activeScriptId },
   });
 
+  // The team-wide prompt order (right Prompt Library) drives the top-to-bottom lane order of the map.
+  // The list comes back already sorted by SortOrder, so its array index IS the rank.
+  const { data: promptList } = useGetApiPrompts(
+    { workspaceId: activeWorkspaceId },
+    { query: { enabled: !!activeWorkspaceId } },
+  );
+  const promptOrder = useMemo(() => {
+    const m = new Map<string, number>();
+    (promptList ?? []).forEach((p, i) => m.set(p.id, i));
+    return m;
+  }, [promptList]);
+
   useEffect(() => {
     if (activeScriptId) subscribeScript(activeScriptId);
   }, [activeScriptId, subscribeScript]);
@@ -63,7 +77,7 @@ export function CenterPanel() {
   ].filter(Boolean) as string[];
   const canGenerate = missing.length === 0 && !generating;
 
-  const groups = groupByPrompt(sessions ?? []);
+  const groups = useMemo(() => groupByPrompt(sessions ?? [], promptOrder), [sessions, promptOrder]);
   const hasResults = groups.length > 0;
 
   const onGenerate = async () => {
@@ -235,10 +249,14 @@ function CenterEmpty({ title, body }: { title: string; body: string }) {
   );
 }
 
-function groupByPrompt(sessions: SessionWithResultsDto[]): Group[] {
+function groupByPrompt(
+  sessions: SessionWithResultsDto[],
+  /** promptId → rank from the Prompt Library order (lower = higher up). Drives the lane order. */
+  promptOrder: Map<string, number>,
+): Group[] {
   // Keep EVERY run — the map groups them by model into one block so each "Generate more" shows as a
-  // separate, labelled generation. Order is stable: prompts and models by first appearance, runs
-  // chronological, so positions never shuffle when a new run lands.
+  // separate, labelled generation. Within a prompt: models by first appearance, runs chronological,
+  // so a new run never shuffles a block. Across prompts: follow the team's Prompt Library order.
   const ordered = [...sessions].sort(
     (a, b) => +new Date(a.session.createdAt) - +new Date(b.session.createdAt),
   );
@@ -259,5 +277,12 @@ function groupByPrompt(sessions: SessionWithResultsDto[]): Group[] {
   for (const [pid, idx] of groupIndex) {
     groups[idx].sessions = [...modelBuckets.get(pid)!.values()].flat();
   }
-  return groups;
+  // Reorder lanes by the Prompt Library rank. Prompts with no rank (e.g. the prompt was deleted but
+  // its past runs remain) sink to the bottom, keeping their stable first-appearance order among
+  // themselves. Array#sort is stable, so the first-appearance index is the natural tiebreak.
+  const rankOf = (g: Group) => promptOrder.get(g.promptId) ?? Number.MAX_SAFE_INTEGER;
+  return groups
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => rankOf(a.g) - rankOf(b.g) || a.i - b.i)
+    .map((x) => x.g);
 }

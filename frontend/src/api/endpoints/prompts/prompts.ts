@@ -30,6 +30,7 @@ import type {
   PromptDetailDto,
   PromptListItemDto,
   PromptVersionDto,
+  ReorderPromptsRequest,
   UpdatePromptRequest
 } from '../../model';
 
@@ -398,6 +399,63 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDeleteApiPromptsIdMutationOptions(options), queryClient);
+    }
+    export const putApiPromptsReorder = (
+    reorderPromptsRequest: BodyType<ReorderPromptsRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<void>(
+      {url: `/api/prompts/reorder`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: reorderPromptsRequest, signal
+    },
+      options);
+    }
+
+
+
+export const getPutApiPromptsReorderMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiPromptsReorder>>, TError,{data: BodyType<ReorderPromptsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiPromptsReorder>>, TError,{data: BodyType<ReorderPromptsRequest>}, TContext> => {
+
+const mutationKey = ['putApiPromptsReorder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiPromptsReorder>>, {data: BodyType<ReorderPromptsRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  putApiPromptsReorder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiPromptsReorderMutationResult = NonNullable<Awaited<ReturnType<typeof putApiPromptsReorder>>>
+    export type PutApiPromptsReorderMutationBody = BodyType<ReorderPromptsRequest>
+    export type PutApiPromptsReorderMutationError = ErrorType<unknown>
+
+    export const usePutApiPromptsReorder = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiPromptsReorder>>, TError,{data: BodyType<ReorderPromptsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof putApiPromptsReorder>>,
+        TError,
+        {data: BodyType<ReorderPromptsRequest>},
+        TContext
+      > => {
+      return useMutation(getPutApiPromptsReorderMutationOptions(options), queryClient);
     }
     export const postApiPromptsIdVersions = (
     id: string,

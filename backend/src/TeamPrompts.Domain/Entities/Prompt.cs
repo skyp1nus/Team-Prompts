@@ -14,6 +14,11 @@ public class Prompt
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>Manual library ordering within the workspace — lower comes first (top). Drives the
+    /// top-to-bottom prompt order and, in turn, how prompt lanes + their result columns lay out on
+    /// the center map. Reorder is team-wide (shared), like the canvas. Ties fall back to newest-first.</summary>
+    public int SortOrder { get; set; }
+
     /// <summary>The version everyone uses by default. Promote-to-Main repoints this.</summary>
     public Guid? MainVersionId { get; set; }
     public PromptVersion? MainVersion { get; set; }
