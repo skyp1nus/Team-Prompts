@@ -11,8 +11,9 @@ namespace TeamPrompts.Api.Controllers;
 public sealed class PromptsController(IPromptService prompts) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<PromptListItemDto>>> List(CancellationToken ct)
-        => Ok(await prompts.ListAsync(ct));
+    public async Task<ActionResult<IReadOnlyList<PromptListItemDto>>> List(
+        [FromQuery] Guid? workspaceId, CancellationToken ct)
+        => Ok(await prompts.ListAsync(workspaceId, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PromptDetailDto>> Get(Guid id, CancellationToken ct)

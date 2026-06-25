@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { invalidatePath } from "@/lib/query/invalidate";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -39,6 +40,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function CreatePromptDialog() {
   const qc = useQueryClient();
+  const { activeWorkspaceId } = useWorkspace();
   const create = usePostApiPrompts();
   const [open, setOpen] = useState(false);
 
@@ -49,7 +51,7 @@ export function CreatePromptDialog() {
 
   const onSubmit = (values: FormValues) =>
     create.mutate(
-      { data: { name: values.name, content: values.content } },
+      { data: { workspaceId: activeWorkspaceId, name: values.name, content: values.content } },
       {
         onSuccess: async () => {
           await invalidatePath(qc, "/api/prompts");

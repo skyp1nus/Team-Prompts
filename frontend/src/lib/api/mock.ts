@@ -19,9 +19,17 @@ import type {
   TrayItemDto,
   UserDto,
   UserRef,
+  WorkspaceDto,
 } from "@/api/model";
 
 export const MOCK = process.env.NEXT_PUBLIC_MOCK === "1";
+
+/* Workspace ids mirror the backend's seeded WorkspaceDefaults. */
+const WS_GENERAL = "11111111-1111-1111-1111-111111111111";
+const WS_TT = "22222222-2222-2222-2222-222222222222";
+const WS_T = "33333333-3333-3333-3333-333333333333";
+const WS_G = "44444444-4444-4444-4444-444444444444";
+const WS_B = "55555555-5555-5555-5555-555555555555";
 
 /* ----------------------------- seed helpers ----------------------------- */
 let seq = 1;
@@ -79,7 +87,8 @@ function version(
   return { id, promptId, parentVersionId: parent, content, author: ref(author), note, isMain, createdAt: iso(daysAgo) };
 }
 
-type PromptRec = PromptDetailDto & { kind: "titles" | "desc" };
+type PromptRec = PromptDetailDto & { kind: "titles" | "desc"; workspaceId: string };
+type ScriptRec = ScriptListItemDto & { workspaceId: string };
 
 function makeResults(
   sessionId: string,
@@ -138,27 +147,35 @@ function session(
 
 /* ------------------------------- the store ------------------------------ */
 function buildStore() {
-  const scripts: ScriptListItemDto[] = [
-    sc("sc1", "Tutorial — Build a Desk Setup.pdf", "Pdf", 12, 4),
-    sc("sc2", "Vlog — Tokyo Day 3.txt", "Txt", 10, 0),
-    sc("sc3", "Review — Framework 16 Laptop.txt", "Txt", 8, 0),
-    sc("sc4", "How We Color Grade in DaVinci.pdf", "Pdf", 5, 0),
+  const workspaces: WorkspaceDto[] = [
+    ws2(WS_TT, "TT", "TT", 1, false),
+    ws2(WS_T, "T", "T", 2, false),
+    ws2(WS_G, "G", "G", 3, false),
+    ws2(WS_B, "B", "B", 4, false),
+    ws2(WS_GENERAL, "General", null, 100, true),
+  ];
+
+  const scripts: ScriptRec[] = [
+    sc("sc1", "Tutorial — Build a Desk Setup.pdf", "Pdf", 12, 4, WS_GENERAL),
+    sc("sc2", "Vlog — Tokyo Day 3.txt", "Txt", 10, 0, WS_GENERAL),
+    sc("sc3", "Review — Framework 16 Laptop.txt", "Txt", 8, 0, WS_TT),
+    sc("sc4", "How We Color Grade in DaVinci.pdf", "Pdf", 5, 0, WS_T),
   ];
 
   const prompts: PromptRec[] = [
-    prompt("p1", "Punchy Click Titles", "titles", [
+    prompt("p1", "Punchy Click Titles", "titles", WS_GENERAL, [
       ["v1", null, "Priya Raman", 17, "Initial draft", "Write 5 punchy YouTube titles for the script. Keep them under 60 characters.", false],
       ["v2", "v1", "Mara A.", 10, "Tightened wording, added a curiosity hook", "Write 5 punchy, high-CTR YouTube titles. Keep each under 55 characters. Use strong verbs, a clear payoff, and a light curiosity hook.", true],
       ["v3", "v2", "Tomás Vidal", 5, "Experiment: lead with a bold number", "Write 5 punchy, high-CTR YouTube titles. Lead with a bold, specific number or claim. Keep each under 55 characters.", false],
     ]),
-    prompt("p2", "SEO Description Writer", "desc", [
+    prompt("p2", "SEO Description Writer", "desc", WS_GENERAL, [
       ["v1", null, "Priya Raman", 16, "Initial draft", "Write a 3-sentence YouTube description optimized for search. Open with the core keyword and end with a soft CTA. Include 4 hashtags.", true],
     ]),
-    prompt("p3", "Curiosity-Gap Titles", "titles", [
+    prompt("p3", "Curiosity-Gap Titles", "titles", WS_TT, [
       ["v1", null, "Tomás Vidal", 15, "Initial draft", "Write 5 curiosity-gap YouTube titles. Hint at a payoff without revealing it.", false],
       ["v2", "v1", "Mara A.", 8, "Added specificity guidance", "Write 5 curiosity-gap YouTube titles. Anchor each in a concrete detail or number so it stays honest. Under 60 characters.", true],
     ]),
-    prompt("p4", "Calm Educational Titles", "titles", [
+    prompt("p4", "Calm Educational Titles", "titles", WS_T, [
       ["v1", null, "Jules Bennett", 6, "Initial draft", "Write 5 calm, educational YouTube titles. Be clear and descriptive rather than sensational.", true],
     ]),
   ];
@@ -176,12 +193,27 @@ function buildStore() {
     sc4: [],
   };
 
-  return { scripts, prompts, sessionsByScript };
+  return { workspaces, scripts, prompts, sessionsByScript };
 }
 
-function sc(id: string, name: string, fileType: "Pdf" | "Txt", daysAgo: number, sessionCount: number): ScriptListItemDto {
+function ws2(id: string, name: string, key: string | null, sortOrder: number, isSystem: boolean): WorkspaceDto {
   return {
     id,
+    name,
+    key,
+    avatarUrl: null,
+    sortOrder,
+    isSystem,
+    scriptCount: 0,
+    promptCount: 0,
+    createdAt: iso(30),
+    updatedAt: iso(30),
+  };
+}
+function sc(id: string, name: string, fileType: "Pdf" | "Txt", daysAgo: number, sessionCount: number, workspaceId: string): ScriptRec {
+  return {
+    id,
+    workspaceId,
     name,
     originalFileName: name,
     fileType,
@@ -195,6 +227,7 @@ function prompt(
   id: string,
   name: string,
   kind: "titles" | "desc",
+  workspaceId: string,
   vs: [string, string | null, string, number, string, string, boolean][],
 ): PromptRec {
   const versions = vs.map(([vid, parent, author, days, note, content, isMain]) =>
@@ -205,6 +238,7 @@ function prompt(
     id,
     name,
     kind,
+    workspaceId,
     mainVersionId: main.id,
     createdBy: ref("Mara A."),
     createdAt: iso(17),
@@ -275,12 +309,70 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   if (url === "/api/auth/logout") return reply({}, 100);
   if (url === "/health") return reply({ status: "ok" });
 
+  // workspaces
+  if (url === "/api/workspaces" && method === "GET") {
+    const list = [...store.workspaces]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((w) => ({
+        ...w,
+        scriptCount: store.scripts.filter((s) => s.workspaceId === w.id).length,
+        promptCount: store.prompts.filter((p) => p.workspaceId === w.id).length,
+      }));
+    return reply<WorkspaceDto[]>(list);
+  }
+  if (url === "/api/workspaces" && method === "POST") {
+    const id = uid("ws");
+    const maxOrder = Math.max(0, ...store.workspaces.map((w) => w.sortOrder));
+    const w: WorkspaceDto = {
+      id,
+      name: String(body.name ?? "Space"),
+      key: (body.key as string) || null,
+      avatarUrl: null,
+      sortOrder: maxOrder + 1,
+      isSystem: false,
+      scriptCount: 0,
+      promptCount: 0,
+      createdAt: iso(0),
+      updatedAt: iso(0),
+    };
+    store.workspaces.push(w);
+    return reply(w, 200);
+  }
+  let wm = m(/^\/api\/workspaces\/([^/]+)\/avatar$/);
+  if (wm && method === "POST") {
+    const w = store.workspaces.find((x) => x.id === wm![1]);
+    return reply(w ?? {}, 200);
+  }
+  wm = m(/^\/api\/workspaces\/([^/]+)$/);
+  if (wm && method === "PUT") {
+    const w = store.workspaces.find((x) => x.id === wm![1]);
+    if (w) {
+      if (body.name) w.name = String(body.name);
+      w.key = (body.key as string) ?? null;
+    }
+    return reply(w ?? {}, 150);
+  }
+  if (wm && method === "DELETE") {
+    const id = wm![1];
+    store.scripts.forEach((s) => {
+      if (s.workspaceId === id) s.workspaceId = WS_GENERAL;
+    });
+    store.prompts.forEach((p) => {
+      if (p.workspaceId === id) p.workspaceId = WS_GENERAL;
+    });
+    store.workspaces = store.workspaces.filter((x) => x.id !== id);
+    return reply({}, 150);
+  }
+
   // scripts
   if (url === "/api/scripts" && method === "GET") {
-    const q = String((config.params as Record<string, unknown>)?.search ?? "").toLowerCase();
-    return reply<ScriptListItemDto[]>(
-      q ? store.scripts.filter((s) => s.name.toLowerCase().includes(q)) : store.scripts,
-    );
+    const params = (config.params ?? {}) as Record<string, unknown>;
+    const q = String(params.search ?? "").toLowerCase();
+    const wsId = params.workspaceId as string | undefined;
+    let list = store.scripts;
+    if (wsId) list = list.filter((s) => s.workspaceId === wsId);
+    if (q) list = list.filter((s) => s.name.toLowerCase().includes(q));
+    return reply<ScriptListItemDto[]>(list);
   }
   let mm = m(/^\/api\/scripts\/([^/]+)\/sessions$/);
   if (mm && method === "GET") return reply<SessionWithResultsDto[]>(store.sessionsByScript[mm[1]] ?? []);
@@ -309,7 +401,11 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   }
 
   // prompts
-  if (url === "/api/prompts" && method === "GET") return reply<PromptListItemDto[]>(store.prompts.map(listItem));
+  if (url === "/api/prompts" && method === "GET") {
+    const wsId = (config.params as Record<string, unknown>)?.workspaceId as string | undefined;
+    const list = wsId ? store.prompts.filter((p) => p.workspaceId === wsId) : store.prompts;
+    return reply<PromptListItemDto[]>(list.map(listItem));
+  }
   if (url === "/api/prompts" && method === "POST") {
     const id = uid("p");
     const vId = `${id}v1`;
@@ -317,6 +413,7 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
       id,
       name: String(body.name ?? "Untitled"),
       kind: /descr/i.test(String(body.name ?? "")) ? "desc" : "titles",
+      workspaceId: String(body.workspaceId ?? WS_GENERAL),
       mainVersionId: vId,
       createdBy: ref("Mara A."),
       createdAt: iso(0),
@@ -451,10 +548,10 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
 }
 
 /** Mock for the hand-written multipart upload (bypasses the orval mutator). */
-export function mockUpload(file: File, name?: string): Promise<ScriptDto> {
+export function mockUpload(file: File, workspaceId: string, name?: string): Promise<ScriptDto> {
   const id = uid("sc");
   const ext = file.name.toLowerCase().endsWith(".pdf") ? "Pdf" : "Txt";
-  store.scripts.unshift(sc(id, name ?? file.name, ext, 0, 0));
+  store.scripts.unshift(sc(id, name ?? file.name, ext, 0, 0, workspaceId));
   store.sessionsByScript[id] = [];
   return reply<ScriptDto>({
     id,

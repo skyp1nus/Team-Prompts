@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { uploadScript } from "@/lib/api/uploads";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const ACCEPT = [".pdf", ".txt"];
@@ -46,6 +47,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function UploadDialog() {
   const qc = useQueryClient();
+  const { activeWorkspaceId } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +59,7 @@ export function UploadDialog() {
 
   const onSubmit = async (values: FormValues) => {
     try {
-      await uploadScript(values.file, values.name?.trim() || undefined);
+      await uploadScript(values.file, activeWorkspaceId, values.name?.trim() || undefined);
       await invalidatePath(qc, "/api/scripts");
       toast.success("Script uploaded");
       setOpen(false);

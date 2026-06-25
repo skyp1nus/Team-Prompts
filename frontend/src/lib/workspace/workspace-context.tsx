@@ -4,11 +4,26 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 
 export type CenterView = "columns" | "grid" | "map";
 
+/** Fixed id of the seeded, non-deletable "General" space (see backend WorkspaceDefaults).
+ * Used as the initial active space so the panels can query before the dock list loads. */
+export const GENERAL_WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
+
 /** A pinned prompt version for the next run. Absence of a pin = follow the prompt's current main
  * version (always the latest the team promoted). <c>number</c> is the "vN" shown in the UI. */
 export type PromptVersionPin = { versionId: string; number: number };
 
 type WorkspaceValue = {
+  /** The active space (dock selection). Scopes both the Scripts and Prompt Library panels. */
+  activeWorkspaceId: string;
+  /** Set the active space directly (used for auto-fallback when the persisted id is gone). */
+  setActiveWorkspaceId: (id: string) => void;
+  /** Switch space from the dock — also clears the previous space's script/prompt selections. */
+  selectWorkspace: (id: string) => void;
+
+  /** Dock collapsed (Mac-dock hide). */
+  dockCollapsed: boolean;
+  toggleDockCollapsed: () => void;
+
   /** The script whose generation history fills the center map. */
   activeScriptId: string | null;
   setActiveScriptId: (id: string | null) => void;
@@ -79,6 +94,11 @@ function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React
 }
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const [activeWorkspaceId, setActiveWorkspaceId] = usePersistedState<string>(
+    "tp.ws.activeWorkspace",
+    GENERAL_WORKSPACE_ID,
+  );
+  const [dockCollapsed, setDockCollapsed] = usePersistedState<boolean>("tp.ws.dockCollapsed", false);
   const [activeScriptId, setActiveScriptId] = usePersistedState<string | null>("tp.ws.activeScript", null);
   const [selectedPromptIds, setSelectedPromptIds] = usePersistedState<string[]>("tp.ws.prompts", []);
   const [promptVersions, setPromptVersions] = usePersistedState<Record<string, PromptVersionPin>>(
@@ -89,6 +109,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
+
+  // Switching space drops the previous space's selections so stale ids never reach a run or the map.
+  // (The dock guards against calling this for the already-active space.)
+  const selectWorkspace = useCallback(
+    (id: string) => {
+      setActiveScriptId(null);
+      setBatchScriptIds([]);
+      setSelectedPromptIds([]);
+      setPromptVersions({});
+      setActiveWorkspaceId(id);
+    },
+    [setActiveScriptId, setBatchScriptIds, setSelectedPromptIds, setPromptVersions, setActiveWorkspaceId],
+  );
+
+  const toggleDockCollapsed = useCallback(() => setDockCollapsed((c) => !c), [setDockCollapsed]);
 
   const togglePrompt = useCallback(
     (id: string) =>
@@ -148,6 +183,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceContext.Provider
       value={{
+        activeWorkspaceId,
+        setActiveWorkspaceId,
+        selectWorkspace,
+        dockCollapsed,
+        toggleDockCollapsed,
         activeScriptId,
         setActiveScriptId,
         selectedPromptIds,

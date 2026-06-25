@@ -151,6 +151,10 @@ export const postApiScripts = (
 ) => {
 
       const formUrlEncoded = new URLSearchParams();
+if(postApiScriptsBody.workspaceId !== undefined) {
+ formUrlEncoded.append(`workspaceId`, postApiScriptsBody.workspaceId);
+ }
+
 if(postApiScriptsBody.ContentType !== undefined) {
  formUrlEncoded.append(`ContentType`, postApiScriptsBody.ContentType);
  }

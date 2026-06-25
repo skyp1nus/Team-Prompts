@@ -8,6 +8,11 @@ namespace TeamPrompts.Domain.Entities;
 public class Script
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>The workspace this script belongs to (scopes the left Scripts panel).</summary>
+    public Guid WorkspaceId { get; set; }
+    public Workspace? Workspace { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string OriginalFileName { get; set; } = string.Empty;
     public FileType FileType { get; set; }

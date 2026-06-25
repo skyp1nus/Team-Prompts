@@ -11,6 +11,7 @@ public static class DependencyInjection
     {
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
+        services.AddScoped<IWorkspaceService, WorkspaceService>();
         services.AddScoped<IScriptService, ScriptService>();
         services.AddScoped<IPromptService, PromptService>();
         services.AddScoped<IGenerationService, GenerationService>();

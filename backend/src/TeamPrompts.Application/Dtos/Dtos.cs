@@ -5,6 +5,14 @@ namespace TeamPrompts.Application.Dtos;
 // ---- Shared ----
 public sealed record UserRef(string Id, string DisplayName, string? Email = null);
 
+// ---- Workspaces (top-level spaces that scope Scripts + Prompt library) ----
+public sealed record WorkspaceDto(
+    Guid Id, string Name, string? Key, string? AvatarUrl, int SortOrder, bool IsSystem,
+    int ScriptCount, int PromptCount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record CreateWorkspaceRequest(string Name, string? Key);
+public sealed record UpdateWorkspaceRequest(string Name, string? Key);
+
 // ---- Auth / users ----
 public sealed record LoginRequest(string Email, string Password);
 public sealed record CreateUserRequest(string Email, string Password, string DisplayName, string Role);
@@ -34,7 +42,7 @@ public sealed record PromptDetailDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions);
 
-public sealed record CreatePromptRequest(string Name, string Content);
+public sealed record CreatePromptRequest(Guid WorkspaceId, string Name, string Content);
 public sealed record UpdatePromptRequest(string Name);
 public sealed record CreateVersionRequest(Guid ParentVersionId, string Content, string? Note);
 

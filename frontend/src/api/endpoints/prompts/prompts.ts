@@ -26,6 +26,7 @@ import type {
 import type {
   CreatePromptRequest,
   CreateVersionRequest,
+  GetApiPromptsParams,
   PromptDetailDto,
   PromptListItemDto,
   PromptVersionDto,
@@ -56,13 +57,14 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getApiPrompts = (
-
+    params?: GetApiPromptsParams,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
 ) => {
 
 
       return customInstance<PromptListItemDto[]>(
-      {url: `/api/prompts`, method: 'GET', signal
+      {url: `/api/prompts`, method: 'GET',
+        params, signal
     },
       options);
     }
@@ -70,23 +72,23 @@ export const getApiPrompts = (
 
 
 
-export const getGetApiPromptsQueryKey = () => {
+export const getGetApiPromptsQueryKey = (params?: GetApiPromptsParams,) => {
     return [
-    `/api/prompts`
+    `/api/prompts`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetApiPromptsQueryOptions = <TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+export const getGetApiPromptsQueryOptions = <TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>(params?: GetApiPromptsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetApiPromptsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetApiPromptsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiPrompts>>> = ({ signal }) => getApiPrompts(requestOptions, signal);
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getApiPrompts>>> = ({ signal }) => getApiPrompts(params, requestOptions, signal);
 
 
 
@@ -100,7 +102,7 @@ export type GetApiPromptsQueryError = ErrorType<unknown>
 
 
 export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>(
-  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>> & Pick<
+ params: undefined |  GetApiPromptsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getApiPrompts>>,
           TError,
@@ -110,7 +112,7 @@ export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>> & Pick<
+ params?: GetApiPromptsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getApiPrompts>>,
           TError,
@@ -120,16 +122,16 @@ export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ params?: GetApiPromptsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 
 export function useGetApiPrompts<TData = Awaited<ReturnType<typeof getApiPrompts>>, TError = ErrorType<unknown>>(
-  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
+ params?: GetApiPromptsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getApiPrompts>>, TError, TData>>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetApiPromptsQueryOptions(options)
+  const queryOptions = getGetApiPromptsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

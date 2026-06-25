@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { WorkspaceDock } from "@/components/workspace/workspace-dock";
 import { useAuth } from "@/lib/auth/auth-context";
 import { initials } from "@/lib/format";
 
@@ -113,22 +114,25 @@ export function AppShell() {
         </DropdownMenu>
       </header>
 
-      {/* workspace: Scripts | Center | Prompts */}
-      <div className="min-h-0 flex-1">
+      {/* workspace: Dock | Scripts | Center | Prompts */}
+      <div className="flex min-h-0 flex-1">
+        <WorkspaceDock />
         {/* v4: bare numbers are PIXELS. Design rail widths 266 / 304, center flexes. */}
-        <ResizablePanelGroup orientation="horizontal" className="h-full">
-          <ResizablePanel defaultSize={266} minSize={220} maxSize={360}>
-            <ScriptsPanel />
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel minSize={400}>
-            <CenterPanel />
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel defaultSize={304} minSize={240} maxSize={420}>
-            <PromptsPanel />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+        <div className="min-h-0 flex-1">
+          <ResizablePanelGroup orientation="horizontal" className="h-full">
+            <ResizablePanel defaultSize={266} minSize={220} maxSize={360}>
+              <ScriptsPanel />
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel minSize={400}>
+              <CenterPanel />
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize={304} minSize={240} maxSize={420}>
+              <PromptsPanel />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       </div>
     </div>
   );

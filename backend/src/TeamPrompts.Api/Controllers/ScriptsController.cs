@@ -11,8 +11,9 @@ namespace TeamPrompts.Api.Controllers;
 public sealed class ScriptsController(IScriptService scripts) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ScriptListItemDto>>> List([FromQuery] string? search, CancellationToken ct)
-        => Ok(await scripts.ListAsync(search, ct));
+    public async Task<ActionResult<IReadOnlyList<ScriptListItemDto>>> List(
+        [FromQuery] Guid? workspaceId, [FromQuery] string? search, CancellationToken ct)
+        => Ok(await scripts.ListAsync(workspaceId, search, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ScriptDto>> Get(Guid id, CancellationToken ct)
@@ -20,13 +21,14 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
 
     [HttpPost]
     [RequestSizeLimit(25 * 1024 * 1024)]
-    public async Task<ActionResult<ScriptDto>> Upload([FromForm] IFormFile file, [FromForm] string? name, CancellationToken ct)
+    public async Task<ActionResult<ScriptDto>> Upload(
+        [FromForm] Guid workspaceId, [FromForm] IFormFile file, [FromForm] string? name, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return BadRequest("A non-empty file is required.");
 
         await using var stream = file.OpenReadStream();
-        var dto = await scripts.UploadAsync(file.FileName, file.ContentType, stream, name, ct);
+        var dto = await scripts.UploadAsync(workspaceId, file.FileName, file.ContentType, stream, name, ct);
         return CreatedAtAction(nameof(Get), new { id = dto.Id }, dto);
     }
 
