@@ -4,7 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, LogOut, ScrollText, Settings, UserCircle, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { usePostApiAuthLogout } from "@/api/endpoints/auth/auth";
+import { CollapsedRail } from "@/components/collapsed-rail";
 import { CenterPanel } from "@/components/generation/center-panel";
 import { PromptsPanel } from "@/components/prompts/prompts-panel";
 import { ScriptsPanel } from "@/components/scripts/scripts-panel";
@@ -23,12 +26,57 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { WorkspaceDock } from "@/components/workspace/workspace-dock";
 import { useAuth } from "@/lib/auth/auth-context";
 import { initials } from "@/lib/format";
+import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function AppShell() {
   const { user, isOwner, isAdmin, isPrivileged } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
   const logout = usePostApiAuthLogout();
+
+  const {
+    scriptsPanelCollapsed,
+    setScriptsPanelCollapsed,
+    promptsPanelCollapsed,
+    setPromptsPanelCollapsed,
+  } = useWorkspace();
+
+  // Imperative handles drive the actual collapse; the persisted booleans above are the source of
+  // truth. The effects below reconcile the panel to the boolean (covers reload-restore too), and
+  // onResize feeds drag-to-collapse back into the boolean so the toggle + edge tab stay in sync.
+  const scriptsRef = useRef<PanelImperativeHandle | null>(null);
+  const promptsRef = useRef<PanelImperativeHandle | null>(null);
+
+  useEffect(() => {
+    const r = scriptsRef.current;
+    if (!r) return;
+    if (scriptsPanelCollapsed && !r.isCollapsed()) r.collapse();
+    else if (!scriptsPanelCollapsed && r.isCollapsed()) r.expand();
+  }, [scriptsPanelCollapsed]);
+
+  useEffect(() => {
+    const r = promptsRef.current;
+    if (!r) return;
+    if (promptsPanelCollapsed && !r.isCollapsed()) r.collapse();
+    else if (!promptsPanelCollapsed && r.isCollapsed()) r.expand();
+  }, [promptsPanelCollapsed]);
+
+  // Keyboard: ⌘/Ctrl+B toggles Scripts, ⌘/Ctrl+⌥+B toggles Prompts (shadcn-sidebar convention).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "b" || !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      if (e.altKey) setPromptsPanelCollapsed(!promptsPanelCollapsed);
+      else setScriptsPanelCollapsed(!scriptsPanelCollapsed);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    scriptsPanelCollapsed,
+    promptsPanelCollapsed,
+    setScriptsPanelCollapsed,
+    setPromptsPanelCollapsed,
+  ]);
 
   const onLogout = () =>
     logout.mutate(undefined, {
@@ -114,25 +162,52 @@ export function AppShell() {
         </DropdownMenu>
       </header>
 
-      {/* workspace: Dock | Scripts | Center | Prompts */}
+      {/* workspace: Dock | Scripts | Center | Prompts.
+          Collapsing a side rail drops its panel to width 0 (the in-panel toggle / a drag below
+          minSize / ⌘B do this) and swaps in a slim CollapsedRail in its place — click it to expand.
+          Handles adjacent to a collapsed panel are dropped so no stray drag-line lingers. */}
       <div className="flex min-h-0 flex-1">
         <WorkspaceDock />
+        {scriptsPanelCollapsed && (
+          <CollapsedRail side="left" label="Scripts" onExpand={() => setScriptsPanelCollapsed(false)} />
+        )}
+
         {/* v4: bare numbers are PIXELS. Design rail widths 266 / 304, center flexes. */}
-        <div className="min-h-0 flex-1">
-          <ResizablePanelGroup orientation="horizontal" className="h-full">
-            <ResizablePanel defaultSize={266} minSize={220} maxSize={360}>
-              <ScriptsPanel />
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel minSize={400}>
-              <CenterPanel />
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={304} minSize={240} maxSize={420}>
-              <PromptsPanel />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+        <ResizablePanelGroup orientation="horizontal" className="h-full flex-1">
+          <ResizablePanel
+            id="scripts"
+            collapsible
+            collapsedSize={0}
+            panelRef={scriptsRef}
+            onResize={(size) => setScriptsPanelCollapsed(size.inPixels < 1)}
+            defaultSize={266}
+            minSize={220}
+            maxSize={360}
+          >
+            <ScriptsPanel />
+          </ResizablePanel>
+          {!scriptsPanelCollapsed && <ResizableHandle />}
+          <ResizablePanel id="center" minSize={400}>
+            <CenterPanel />
+          </ResizablePanel>
+          {!promptsPanelCollapsed && <ResizableHandle />}
+          <ResizablePanel
+            id="prompts"
+            collapsible
+            collapsedSize={0}
+            panelRef={promptsRef}
+            onResize={(size) => setPromptsPanelCollapsed(size.inPixels < 1)}
+            defaultSize={304}
+            minSize={240}
+            maxSize={420}
+          >
+            <PromptsPanel />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+
+        {promptsPanelCollapsed && (
+          <CollapsedRail side="right" label="Prompts" onExpand={() => setPromptsPanelCollapsed(false)} />
+        )}
       </div>
     </div>
   );

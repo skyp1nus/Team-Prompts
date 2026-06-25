@@ -1,15 +1,17 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Search, X } from "lucide-react";
+import { Check, PanelLeftClose, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDeleteApiScriptsId, useGetApiScripts } from "@/api/endpoints/scripts/scripts";
 import { FileType, type ScriptListItemDto } from "@/api/model";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelative } from "@/lib/format";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
@@ -18,8 +20,15 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
-  const { activeWorkspaceId, activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, pruneScripts } =
-    useWorkspace();
+  const {
+    activeWorkspaceId,
+    activeScriptId,
+    setActiveScriptId,
+    batchScriptIds,
+    toggleBatchScript,
+    pruneScripts,
+    setScriptsPanelCollapsed,
+  } = useWorkspace();
 
   const { data: scripts, isLoading } = useGetApiScripts(
     { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) },
@@ -57,9 +66,34 @@ export function ScriptsPanel() {
     <aside className="flex h-full flex-col border-r border-border bg-background">
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h2 className="eyebrow">Scripts</h2>
-        <span className="text-[11px] text-faint">
-          {selCount ? `${selCount} selected` : (scripts?.length ?? 0)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-faint">
+            {selCount ? `${selCount} selected` : (scripts?.length ?? 0)}
+          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setScriptsPanelCollapsed(true)}
+                  aria-label="Collapse scripts panel"
+                >
+                  <PanelLeftClose />
+                </Button>
+              }
+            />
+            <TooltipContent side="bottom">
+              Collapse
+              <kbd
+                data-slot="kbd"
+                className="rounded border border-background/25 px-1 font-mono text-[10px] leading-4"
+              >
+                ⌘B
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <div className="px-3.5 pb-2.5">

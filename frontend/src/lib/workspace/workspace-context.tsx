@@ -66,6 +66,13 @@ type WorkspaceValue = {
   /** Map-only: stack a model's runs vertically (default) or chain them left-to-right with ropes. */
   mapOrientation: MapOrientation;
   setMapOrientation: (o: MapOrientation) => void;
+
+  /** Left Scripts rail collapsed (hidden) — persisted across reloads. */
+  scriptsPanelCollapsed: boolean;
+  setScriptsPanelCollapsed: (v: boolean) => void;
+  /** Right Prompts rail collapsed (hidden) — persisted across reloads. */
+  promptsPanelCollapsed: boolean;
+  setPromptsPanelCollapsed: (v: boolean) => void;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -118,6 +125,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
   const [mapOrientation, setMapOrientation] = usePersistedState<MapOrientation>("tp.ws.mapOrientation", "vertical");
+  const [scriptsPanelCollapsed, setScriptsPanelCollapsed] = usePersistedState<boolean>(
+    "tp.ws.scriptsCollapsed",
+    false,
+  );
+  const [promptsPanelCollapsed, setPromptsPanelCollapsed] = usePersistedState<boolean>(
+    "tp.ws.promptsCollapsed",
+    false,
+  );
 
   // Switching space drops the previous space's selections so stale ids never reach a run or the map.
   // (The dock guards against calling this for the already-active space.)
@@ -218,6 +233,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setShowHighlightsOnly,
         mapOrientation,
         setMapOrientation,
+        scriptsPanelCollapsed,
+        setScriptsPanelCollapsed,
+        promptsPanelCollapsed,
+        setPromptsPanelCollapsed,
       }}
     >
       {children}
