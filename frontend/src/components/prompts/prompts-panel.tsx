@@ -1,10 +1,30 @@
 "use client";
 
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
-import { SlidersHorizontal, X } from "lucide-react";
+import { GripVertical, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useDeleteApiPromptsId, useGetApiPrompts } from "@/api/endpoints/prompts/prompts";
+import {
+  getGetApiPromptsQueryKey,
+  useDeleteApiPromptsId,
+  useGetApiPrompts,
+  usePutApiPromptsReorder,
+} from "@/api/endpoints/prompts/prompts";
 import type { PromptListItemDto } from "@/api/model";
 import { CreatePromptDialog } from "@/components/prompts/create-prompt-dialog";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
@@ -23,12 +43,39 @@ export function PromptsPanel() {
     { query: { enabled: !!activeWorkspaceId } },
   );
   const del = useDeleteApiPromptsId();
+  const reorder = usePutApiPromptsReorder();
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
 
   // Self-heal a persisted selection: drop any prompt id that no longer exists.
   useEffect(() => {
     if (prompts) prunePrompts(prompts.map((p) => p.id));
   }, [prompts, prunePrompts]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Drag a prompt to set the team-wide top-to-bottom order. The list itself is the source of truth
+  // (already sorted by SortOrder), so we reorder the cached list optimistically, then persist the new
+  // id sequence. On failure we refetch to snap back. This same order drives the center map's lanes.
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id || !prompts || !activeWorkspaceId) return;
+    const from = prompts.findIndex((p) => p.id === active.id);
+    const to = prompts.findIndex((p) => p.id === over.id);
+    if (from < 0 || to < 0) return;
+
+    const next = arrayMove(prompts, from, to);
+    const key = getGetApiPromptsQueryKey({ workspaceId: activeWorkspaceId });
+    qc.setQueryData(key, next); // optimistic
+    reorder.mutate(
+      { data: { workspaceId: activeWorkspaceId, orderedIds: next.map((p) => p.id) } },
+      {
+        onError: () => {
+          invalidatePath(qc, "/api/prompts"); // revert to the server order
+          toast.error("Couldn’t save the order");
+        },
+      },
+    );
+  };
 
   const onDelete = (id: string, name: string) => {
     if (!confirm(`Delete prompt "${name}"?`)) return;
@@ -67,17 +114,23 @@ export function PromptsPanel() {
               Create one to begin.
             </p>
           )}
-          {prompts?.map((p) => (
-            <PromptRow
-              key={p.id}
-              prompt={p}
-              selected={selectedPromptIds.includes(p.id)}
-              pinnedVersion={promptVersions[p.id]?.number ?? null}
-              onToggle={() => togglePrompt(p.id)}
-              onOpen={() => setOpenPromptId(p.id)}
-              onDelete={() => onDelete(p.id, p.name)}
-            />
-          ))}
+          {prompts && prompts.length > 0 && (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={prompts.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {prompts.map((p) => (
+                  <PromptRow
+                    key={p.id}
+                    prompt={p}
+                    selected={selectedPromptIds.includes(p.id)}
+                    pinnedVersion={promptVersions[p.id]?.number ?? null}
+                    onToggle={() => togglePrompt(p.id)}
+                    onOpen={() => setOpenPromptId(p.id)}
+                    onDelete={() => onDelete(p.id, p.name)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
         </div>
       </ScrollArea>
 
@@ -107,14 +160,31 @@ function PromptRow({
   onDelete: () => void;
 }) {
   const hasMain = !!prompt.mainVersionId;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: prompt.id,
+  });
+
   return (
     <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onToggle}
       className={cn(
-        "group relative mb-[3px] flex cursor-pointer items-start gap-2.5 rounded-lg p-2.5 transition-colors hover:bg-accent",
+        "group relative mb-[3px] flex cursor-pointer items-start gap-1.5 rounded-lg p-2.5 transition-colors hover:bg-accent",
         selected && "bg-primary/[0.07]",
+        isDragging && "z-10 opacity-60",
       )}
     >
+      <button
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-0.5 flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-foreground"
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+      >
+        <GripVertical className="size-3.5" />
+      </button>
       <span
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",

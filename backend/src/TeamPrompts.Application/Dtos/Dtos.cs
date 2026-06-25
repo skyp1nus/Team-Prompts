@@ -44,6 +44,10 @@ public sealed record PromptDetailDto(
 
 public sealed record CreatePromptRequest(Guid WorkspaceId, string Name, string Content);
 public sealed record UpdatePromptRequest(string Name);
+
+/// <summary>Set the team-wide top-to-bottom order of a workspace's prompts. <c>OrderedIds</c> is the
+/// full list in the new order; each prompt's <c>SortOrder</c> becomes its index in this list.</summary>
+public sealed record ReorderPromptsRequest(Guid WorkspaceId, IReadOnlyList<Guid> OrderedIds);
 public sealed record CreateVersionRequest(Guid ParentVersionId, string Content, string? Note);
 
 // ---- Generation ----

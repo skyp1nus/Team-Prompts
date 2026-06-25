@@ -32,6 +32,7 @@ export * from './promptDetailDto';
 export * from './promptListItemDto';
 export * from './promptVersionDto';
 export * from './regenerateRequest';
+export * from './reorderPromptsRequest';
 export * from './resultKind';
 export * from './saveCanvasRequest';
 export * from './scriptDto';

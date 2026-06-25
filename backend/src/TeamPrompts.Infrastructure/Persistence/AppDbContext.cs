@@ -60,6 +60,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.CreatedByUserId).HasMaxLength(450);
             e.HasIndex(x => x.Name);
             e.HasIndex(x => x.WorkspaceId);
+            // Library list orders by SortOrder within a workspace — index the pair it sorts on.
+            e.HasIndex(x => new { x.WorkspaceId, x.SortOrder });
 
             e.HasOne(x => x.Workspace)
                 .WithMany(w => w.Prompts)
