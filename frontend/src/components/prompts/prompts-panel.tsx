@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
-import { GripVertical, SlidersHorizontal, X } from "lucide-react";
+import { GripVertical, PanelRightClose, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -28,16 +28,24 @@ import {
 import type { PromptListItemDto } from "@/api/model";
 import { CreatePromptDialog } from "@/components/prompts/create-prompt-dialog";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function PromptsPanel() {
   const qc = useQueryClient();
-  const { activeWorkspaceId, selectedPromptIds, togglePrompt, prunePrompts, promptVersions } =
-    useWorkspace();
+  const {
+    activeWorkspaceId,
+    selectedPromptIds,
+    togglePrompt,
+    prunePrompts,
+    promptVersions,
+    setPromptsPanelCollapsed,
+  } = useWorkspace();
   const { data: prompts, isLoading } = useGetApiPrompts(
     { workspaceId: activeWorkspaceId },
     { query: { enabled: !!activeWorkspaceId } },
@@ -97,7 +105,32 @@ export function PromptsPanel() {
     <aside className="flex h-full flex-col border-l border-border bg-background">
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h2 className="eyebrow">Prompt Library</h2>
-        <CreatePromptDialog />
+        <div className="flex items-center gap-1.5">
+          <CreatePromptDialog />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setPromptsPanelCollapsed(true)}
+                  aria-label="Collapse prompts panel"
+                >
+                  <PanelRightClose />
+                </Button>
+              }
+            />
+            <TooltipContent side="bottom">
+              Collapse
+              <kbd
+                data-slot="kbd"
+                className="rounded border border-background/25 px-1 font-mono text-[10px] leading-4"
+              >
+                ⌘⌥B
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       <div className="px-3.5 pb-2.5 text-[11px] text-faint">
         {n === 0 ? "No prompts selected" : `${n} prompt${n === 1 ? "" : "s"} selected`}
