@@ -182,7 +182,10 @@ function buildStore() {
 
   const sessionsByScript: Record<string, SessionWithResultsDto[]> = {
     sc1: [
+      // Three runs of the same prompt+model → shows the horizontal "chain" layout (rope-linked runs).
       session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1, 3]),
+      session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 4, []),
+      session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 3, []),
       session("sc1", prompts[0], "openai/gpt-4o", 5, []),
       session("sc1", prompts[1], "anthropic/claude-3.7-sonnet", 5, []),
       session("sc1", prompts[2], "anthropic/claude-3.7-sonnet", 5, [0], [0]),
