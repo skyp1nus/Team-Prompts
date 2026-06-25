@@ -126,9 +126,10 @@ export function CenterPanel() {
     <section className="flex h-full min-w-0 flex-col bg-muted">
       {/* center-head */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-2.5 border-b border-border bg-background px-5 py-3">
-        {/* left: highlights filter + clear the whole canvas */}
+        {/* left: highlights filter + clear the whole canvas. On the Map the highlights toggle lives in
+            the canvas controls menu instead, so it isn't duplicated here. */}
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          {hasResults && (
+          {hasResults && view !== "map" && (
             <button
               onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
               title={

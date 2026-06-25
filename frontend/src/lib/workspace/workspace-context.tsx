@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 
 export type CenterView = "columns" | "grid" | "map";
 
+/** How a model's runs stack inside its output on the Map: vertically (the classic stacked card) or
+ *  as a left-to-right, rope-linked chain (newest run extends the chain from the last). Map-only. */
+export type MapOrientation = "vertical" | "horizontal";
+
 /** Fixed id of the seeded, non-deletable "General" space (see backend WorkspaceDefaults).
  * Used as the initial active space so the panels can query before the dock list loads. */
 export const GENERAL_WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
@@ -58,6 +62,10 @@ type WorkspaceValue = {
   /** When on, the center emphasizes team highlights and dims everything else. */
   showHighlightsOnly: boolean;
   setShowHighlightsOnly: (v: boolean) => void;
+
+  /** Map-only: stack a model's runs vertically (default) or chain them left-to-right with ropes. */
+  mapOrientation: MapOrientation;
+  setMapOrientation: (o: MapOrientation) => void;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -109,6 +117,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
+  const [mapOrientation, setMapOrientation] = usePersistedState<MapOrientation>("tp.ws.mapOrientation", "vertical");
 
   // Switching space drops the previous space's selections so stale ids never reach a run or the map.
   // (The dock guards against calling this for the already-active space.)
@@ -207,6 +216,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setView,
         showHighlightsOnly,
         setShowHighlightsOnly,
+        mapOrientation,
+        setMapOrientation,
       }}
     >
       {children}

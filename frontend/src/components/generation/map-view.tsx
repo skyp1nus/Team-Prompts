@@ -3,7 +3,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronDown,
   ChevronRight,
+  Columns3,
   Copy,
   FileText,
   Heart,
@@ -13,6 +15,8 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  Rows3,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -52,7 +56,7 @@ import { providerDot, providerOf } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
-import { useWorkspace } from "@/lib/workspace/workspace-context";
+import { type MapOrientation, useWorkspace } from "@/lib/workspace/workspace-context";
 
 export type Group = { promptId: string; promptName: string; sessions: SessionWithResultsDto[] };
 
@@ -147,6 +151,8 @@ function computeAutoGrid(groups: Group[], sizeOf: (k: string) => { w: number; h:
  */
 export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: string }) {
   const qc = useQueryClient();
+  const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly } = useWorkspace();
+  const [menuOpen, setMenuOpen] = useState(true);
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const tRef = useRef<Transform>({ z: 0.8, tx: 40, ty: 28 });
@@ -251,8 +257,10 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
       return changed ? next : prev;
     });
     setReady(true);
+    // Flipping orientation rewrites every block's footprint (tall stack ↔ wide chain), so re-seed the
+    // auto-grid from fresh measurements — manual placements keep their saved spot, auto blocks reflow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasReady, structuralKey, serverPos, sizeOf]);
+  }, [canvasReady, structuralKey, serverPos, sizeOf, mapOrientation]);
 
   /* Size the layer to the blocks' bounding box so pan/fit and the grid background cover everything. */
   useLayoutEffect(() => {
@@ -270,7 +278,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     const nh = h + PAD_Y;
     setLayerSize((ls) => (ls.w === nw && ls.h === nh ? ls : { w: nw, h: nh }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pos, ready, structuralKey, sizeOf, layoutVersion, sizeTick]);
+  }, [pos, ready, structuralKey, sizeOf, layoutVersion, sizeTick, mapOrientation]);
 
   const zoomAt = useCallback((nz: number, px: number, py: number) => {
     setT((p) => {
@@ -523,7 +531,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     });
     setEdges(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [structuralKey, layoutVersion, sizeTick, pos, layerSize.w, layerSize.h]);
+  }, [structuralKey, layoutVersion, sizeTick, pos, layerSize.w, layerSize.h, mapOrientation]);
 
   /* resize → recompute edges */
   useEffect(() => {
@@ -633,6 +641,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
                   promptId={n.group.promptId}
                   scriptId={scriptId}
                   lit={lit}
+                  orientation={mapOrientation}
                   onHover={(h) => {
                     if (panningRef.current || dragRef.current) return;
                     setHover(h ? { type: "col", id: n.colId } : null);
@@ -645,31 +654,172 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
         })}
       </div>
 
-      {/* zoom + layout controls (design .map-zoom) */}
-      <div className="absolute right-4 bottom-4 z-20 flex items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-md">
-        <ZoomBtn onClick={onResetLayout} label="Reset layout — tidy every block back into place">
-          {resetCanvas.isPending ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
-        </ZoomBtn>
-        <span className="mx-0.5 h-[18px] w-px bg-border" />
-        <ZoomBtn onClick={() => zoomCenter(1 / 1.6)} label="Zoom out">
+      {/* collapsible canvas controls (orientation · highlights · zoom · layout) */}
+      <MapMenu
+        open={menuOpen}
+        onToggleOpen={() => setMenuOpen((o) => !o)}
+        orientation={mapOrientation}
+        onOrientation={setMapOrientation}
+        highlightsOnly={showHighlightsOnly}
+        onToggleHighlights={() => setShowHighlightsOnly(!showHighlightsOnly)}
+        zoomPct={Math.round(t.z * 100)}
+        onZoomOut={() => zoomCenter(1 / 1.6)}
+        onZoomIn={() => zoomCenter(1.6)}
+        onZoomReset={() =>
+          zoomAt(1, (viewportRef.current?.clientWidth ?? 0) / 2, (viewportRef.current?.clientHeight ?? 0) / 2)
+        }
+        onFit={fit}
+        onResetLayout={onResetLayout}
+        resetPending={resetCanvas.isPending}
+      />
+    </div>
+  );
+}
+
+/* ============================ MAP MENU ============================ */
+/** Collapsible bottom-right control cluster: layout orientation, the team highlights spotlight, zoom,
+ *  fit, and reset-layout — folded behind one button so the canvas stays clear. */
+function MapMenu({
+  open,
+  onToggleOpen,
+  orientation,
+  onOrientation,
+  highlightsOnly,
+  onToggleHighlights,
+  zoomPct,
+  onZoomOut,
+  onZoomIn,
+  onZoomReset,
+  onFit,
+  onResetLayout,
+  resetPending,
+}: {
+  open: boolean;
+  onToggleOpen: () => void;
+  orientation: MapOrientation;
+  onOrientation: (o: MapOrientation) => void;
+  highlightsOnly: boolean;
+  onToggleHighlights: () => void;
+  zoomPct: number;
+  onZoomOut: () => void;
+  onZoomIn: () => void;
+  onZoomReset: () => void;
+  onFit: () => void;
+  onResetLayout: () => void;
+  resetPending: boolean;
+}) {
+  if (!open) {
+    return (
+      <div className="absolute right-4 bottom-4 z-20">
+        <button
+          onClick={onToggleOpen}
+          title="Canvas controls"
+          aria-label="Open canvas controls"
+          className="flex size-10 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <SlidersHorizontal className="size-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute right-4 bottom-4 z-20 w-[212px] rounded-xl border border-border bg-card p-2 shadow-md">
+      <div className="mb-2 flex items-center justify-between pr-0.5 pl-1.5">
+        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Canvas</span>
+        <button
+          onClick={onToggleOpen}
+          title="Collapse controls"
+          aria-label="Collapse canvas controls"
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ChevronDown className="size-4" />
+        </button>
+      </div>
+
+      {/* orientation — how a model's runs stack */}
+      <div className="flex gap-0.5 rounded-lg border border-border bg-muted p-[3px]">
+        <SegBtn active={orientation === "vertical"} onClick={() => onOrientation("vertical")}>
+          <Rows3 className="size-3.5" /> Stacked
+        </SegBtn>
+        <SegBtn active={orientation === "horizontal"} onClick={() => onOrientation("horizontal")}>
+          <Columns3 className="size-3.5" /> Chain
+        </SegBtn>
+      </div>
+
+      {/* team highlights spotlight */}
+      <button
+        onClick={onToggleHighlights}
+        title={
+          highlightsOnly
+            ? "Showing only highlights — click to show every result"
+            : "Spotlight the team’s highlights and dim the rest"
+        }
+        className={cn(
+          "mt-2 flex h-8 w-full items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors",
+          highlightsOnly
+            ? "border-rose-400/60 bg-rose-500/10 text-rose-600"
+            : "border-border text-muted-foreground hover:border-rose-400/50 hover:text-rose-600",
+        )}
+      >
+        <Heart className={cn("size-3.5", highlightsOnly && "fill-current")} />
+        Highlights
+      </button>
+
+      {/* zoom */}
+      <div className="mt-2 flex items-center gap-0.5 rounded-lg border border-border p-1">
+        <ZoomBtn onClick={onZoomOut} label="Zoom out">
           <Minus className="size-4" />
         </ZoomBtn>
         <button
-          onClick={() => zoomAt(1, (viewportRef.current?.clientWidth ?? 0) / 2, (viewportRef.current?.clientHeight ?? 0) / 2)}
-          className="min-w-[50px] rounded-lg px-1 text-xs font-semibold text-foreground tabular-nums transition-colors hover:bg-accent"
+          onClick={onZoomReset}
+          className="min-w-0 flex-1 rounded-lg px-1 text-xs font-semibold text-foreground tabular-nums transition-colors hover:bg-accent"
           title="Reset to 100%"
         >
-          {Math.round(t.z * 100)}%
+          {zoomPct}%
         </button>
-        <ZoomBtn onClick={() => zoomCenter(1.6)} label="Zoom in">
+        <ZoomBtn onClick={onZoomIn} label="Zoom in">
           <Plus className="size-4" />
         </ZoomBtn>
         <span className="mx-0.5 h-[18px] w-px bg-border" />
-        <ZoomBtn onClick={fit} label="Fit to view">
+        <ZoomBtn onClick={onFit} label="Fit to view">
           <Maximize2 className="size-4" />
         </ZoomBtn>
       </div>
+
+      {/* reset every block back to auto-layout */}
+      <button
+        onClick={onResetLayout}
+        disabled={resetPending}
+        title="Tidy every block back into place"
+        className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+      >
+        {resetPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+        Reset layout
+      </button>
     </div>
+  );
+}
+
+function SegBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11.5px] font-medium transition-colors",
+        active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -836,6 +986,7 @@ function OutputNode({
   promptId,
   scriptId,
   lit,
+  orientation,
   onHover,
   onLayoutChange,
 }: {
@@ -845,6 +996,7 @@ function OutputNode({
   promptId: string;
   scriptId: string;
   lit: boolean;
+  orientation: MapOrientation;
   onHover: (hovering: boolean) => void;
   onLayoutChange: () => void;
 }) {
@@ -951,51 +1103,55 @@ function OutputNode({
       onMouseLeave={() => onHover(false)}
       className="relative z-[2] w-fit shrink-0"
     >
-      {/* fn-card — results body */}
-      <div
-        data-card
-        className={cn(
-          "rounded-[13px] border border-border bg-card shadow-md transition-[box-shadow,border-color]",
-          lit && "border-border-strong shadow-lg",
-        )}
-      >
-        <div className="flex flex-col gap-1.5 p-2.5">
-          {/* Invisible sizer: makes the card exactly wide enough for THIS block's longest result
-              (≤ PREVIEW_MAX chars), mirroring the real row's chevron + count + star. */}
-          {probeText && (
-            <div aria-hidden className="pointer-events-none h-0 overflow-hidden" data-width-probe>
-              <div className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2">
-                <span className="size-3.5 shrink-0" />
-                <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">
-                  {probeText}
-                </span>
-                <span className="shrink-0 text-[10px] tabular-nums">000</span>
-                <span className="size-[22px] shrink-0" />
-              </div>
-            </div>
-          )}
-          {displayed.map((run, i) => (
-            <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
-              <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5 text-[10px] text-faint">
-                <span className="flex items-center gap-1.5">
-                  {displayed.length > 1 && (
-                    <span className="font-semibold tracking-wide uppercase">
-                      {i === 0 ? "Latest" : `Run ${displayed.length - i}`}
-                    </span>
-                  )}
-                  <VersionBadge
-                    number={run.session.promptVersionNumber}
-                    isMain={run.session.isMainVersion}
-                    small
-                  />
-                </span>
-                {displayed.length > 1 && <span>{formatRelative(run.session.createdAt)}</span>}
-              </div>
-              <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
-            </div>
-          ))}
+      {orientation === "horizontal" ? (
+        /* Chain layout: each run is its own card laid left-to-right (oldest → newest), linked by a
+           rope from the previous one — a new run extends the chain from the last. Results inside a
+           single run stay stacked; only the runs themselves chain. */
+        <div className="relative flex flex-row items-start gap-10">
+          <ChainRope ids={displayed.map((r) => r.session.id).join("|")} color={dot} />
+          {[...displayed].reverse().map((run, j, arr) => {
+            const isLatest = run.session.id === ordered[0]?.session.id;
+            const multi = arr.length > 1;
+            return (
+              <RunCard
+                key={run.session.id}
+                run={run}
+                scriptId={scriptId}
+                onLayoutChange={onLayoutChange}
+                lit={lit}
+                // The prompt → output edge anchors to the left-most (first) card in the chain.
+                anchor={j === 0}
+                label={multi ? (isLatest ? "Latest" : `Run ${j + 1}`) : ""}
+                time={multi ? formatRelative(run.session.createdAt) : ""}
+              />
+            );
+          })}
         </div>
-      </div>
+      ) : (
+        /* fn-card — stacked results body */
+        <div
+          data-card
+          className={cn(
+            "rounded-[13px] border border-border bg-card shadow-md transition-[box-shadow,border-color]",
+            lit && "border-border-strong shadow-lg",
+          )}
+        >
+          <div className="flex flex-col gap-1.5 p-2.5">
+            <WidthProbe text={probeText} />
+            {displayed.map((run, i) => (
+              <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
+                <RunMeta
+                  label={displayed.length > 1 ? (i === 0 ? "Latest" : `Run ${displayed.length - i}`) : ""}
+                  time={displayed.length > 1 ? formatRelative(run.session.createdAt) : ""}
+                  number={run.session.promptVersionNumber}
+                  isMain={run.session.isMainVersion}
+                />
+                <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* fn-bar — model + actions */}
       <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
@@ -1046,6 +1202,139 @@ function OutputNode({
         )}
       </div>
     </div>
+  );
+}
+
+/** Invisible sizer: makes a card exactly wide enough for its longest result (≤ PREVIEW_MAX chars),
+ *  mirroring the real row's chevron + count + star so collapsed text never truncates mid-card. */
+function WidthProbe({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <div aria-hidden className="pointer-events-none h-0 overflow-hidden" data-width-probe>
+      <div className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2">
+        <span className="size-3.5 shrink-0" />
+        <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">{text}</span>
+        <span className="shrink-0 text-[10px] tabular-nums">000</span>
+        <span className="size-[22px] shrink-0" />
+      </div>
+    </div>
+  );
+}
+
+/** Run header: "Latest / Run N" label (when there's more than one run) + version badge + relative time. */
+function RunMeta({
+  label,
+  time,
+  number,
+  isMain,
+}: {
+  label: string;
+  time: string;
+  number: number;
+  isMain: boolean;
+}) {
+  return (
+    <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5 text-[10px] text-faint">
+      <span className="flex items-center gap-1.5">
+        {label && <span className="font-semibold tracking-wide uppercase">{label}</span>}
+        <VersionBadge number={number} isMain={isMain} small />
+      </span>
+      {time && <span>{time}</span>}
+    </div>
+  );
+}
+
+/** One run as a standalone card for the horizontal chain layout — its own border, meta and width
+ *  sizer, so runs read as separate, rope-linked blocks rather than one tall stack. */
+function RunCard({
+  run,
+  scriptId,
+  onLayoutChange,
+  lit,
+  anchor,
+  label,
+  time,
+}: {
+  run: SessionWithResultsDto;
+  scriptId: string;
+  onLayoutChange: () => void;
+  lit: boolean;
+  /** The chain's left-most card — carries `data-card` so the prompt edge connects here. */
+  anchor: boolean;
+  label: string;
+  time: string;
+}) {
+  const probeText = useMemo(() => {
+    const longest = run.results.reduce((l, r) => (r.content.length > l.length ? r.content : l), "");
+    return longest.slice(0, PREVIEW_MAX);
+  }, [run.results]);
+  return (
+    <div
+      data-run-card
+      data-card={anchor ? "" : undefined}
+      className={cn(
+        "relative z-[1] w-fit shrink-0 rounded-[13px] border border-border bg-card p-2.5 shadow-md transition-[box-shadow,border-color]",
+        lit && "border-border-strong shadow-lg",
+      )}
+    >
+      <RunMeta label={label} time={time} number={run.session.promptVersionNumber} isMain={run.session.isMainVersion} />
+      <WidthProbe text={probeText} />
+      <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+    </div>
+  );
+}
+
+/** The rope linking the horizontal run chain: a provider-coloured bezier from each run card's
+ *  right-middle to the next card's left-middle (same style as the prompt → output edges). Geometry
+ *  is read from card offsets — unaffected by the canvas zoom transform — and re-measured on resize.
+ *  The row is found via the svg's own parentElement (not a passed ref) because a child effect runs
+ *  before the parent's ref is attached, so a parent ref would still be null here. */
+function ChainRope({ ids, color }: { ids: string; color: string }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [paths, setPaths] = useState<{ key: string; d: string; ax: number; ay: number; bx: number; by: number }[]>([]);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    const row = svgRef.current?.parentElement;
+    if (!row) return;
+    const recompute = () => {
+      const cards = [...row.querySelectorAll<HTMLElement>("[data-run-card]")];
+      const next: { key: string; d: string; ax: number; ay: number; bx: number; by: number }[] = [];
+      for (let i = 0; i < cards.length - 1; i++) {
+        const a = cards[i];
+        const b = cards[i + 1];
+        const ax = a.offsetLeft + a.offsetWidth;
+        const ay = a.offsetTop + a.offsetHeight / 2;
+        const bx = b.offsetLeft;
+        const by = b.offsetTop + b.offsetHeight / 2;
+        const dx = Math.max(20, (bx - ax) * 0.5);
+        next.push({ key: `${i}`, d: `M${ax} ${ay} C${ax + dx} ${ay} ${bx - dx} ${by} ${bx} ${by}`, ax, ay, bx, by });
+      }
+      setPaths(next);
+      setSize({ w: row.scrollWidth, h: row.scrollHeight });
+    };
+    recompute();
+    // Follow the cards as they grow (streaming tokens, expanding a result) or as runs are added.
+    const ro = new ResizeObserver(recompute);
+    ro.observe(row);
+    for (const c of row.querySelectorAll("[data-run-card]")) ro.observe(c);
+    return () => ro.disconnect();
+  }, [ids]);
+
+  return (
+    <svg
+      ref={svgRef}
+      className="pointer-events-none absolute top-0 left-0 overflow-visible"
+      style={{ width: size.w, height: size.h, zIndex: 0 }}
+    >
+      {paths.map((p) => (
+        <g key={p.key}>
+          <path d={p.d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" />
+          <circle cx={p.ax} cy={p.ay} r={3.4} fill={color} />
+          <circle cx={p.bx} cy={p.by} r={3.4} fill={color} />
+        </g>
+      ))}
+    </svg>
   );
 }
 
