@@ -10,9 +10,9 @@ namespace TeamPrompts.Application.Services;
 
 public interface IScriptService
 {
-    Task<IReadOnlyList<ScriptListItemDto>> ListAsync(string? search, CancellationToken ct = default);
+    Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, CancellationToken ct = default);
     Task<ScriptDto?> GetAsync(Guid id, CancellationToken ct = default);
-    Task<ScriptDto> UploadAsync(string fileName, string contentType, Stream content, string? name, CancellationToken ct = default);
+    Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default);
     Task<ScriptDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 }
@@ -25,9 +25,11 @@ public sealed class ScriptService(
     IUserDirectory users,
     IActivityLogger activity) : IScriptService
 {
-    public async Task<IReadOnlyList<ScriptListItemDto>> ListAsync(string? search, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, CancellationToken ct = default)
     {
         var q = db.Scripts.AsNoTracking();
+        if (workspaceId is { } wsId)
+            q = q.Where(s => s.WorkspaceId == wsId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
@@ -58,8 +60,11 @@ public sealed class ScriptService(
             s.CreatedAt, s.UpdatedAt, Attribution.Of(dir, s.CreatedByUserId));
     }
 
-    public async Task<ScriptDto> UploadAsync(string fileName, string contentType, Stream content, string? name, CancellationToken ct = default)
+    public async Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default)
     {
+        if (!await db.Workspaces.AnyAsync(w => w.Id == workspaceId, ct))
+            throw new AppValidationException("Unknown workspace.");
+
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         var type = ext switch
         {
@@ -80,6 +85,7 @@ public sealed class ScriptService(
 
         var script = new Script
         {
+            WorkspaceId = workspaceId,
             Name = string.IsNullOrWhiteSpace(name) ? Path.GetFileNameWithoutExtension(fileName) : name.Trim(),
             OriginalFileName = fileName,
             FileType = type,

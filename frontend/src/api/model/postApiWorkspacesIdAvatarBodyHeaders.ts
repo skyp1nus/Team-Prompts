@@ -5,8 +5,4 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface CreatePromptRequest {
-  workspaceId: string;
-  name: string;
-  content: string;
-}
+export type PostApiWorkspacesIdAvatarBodyHeaders = {[key: string]: string[]};

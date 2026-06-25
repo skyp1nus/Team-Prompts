@@ -5,8 +5,8 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface CreatePromptRequest {
-  workspaceId: string;
+export interface UpdateWorkspaceRequest {
   name: string;
-  content: string;
+  /** @nullable */
+  key: string | null;
 }

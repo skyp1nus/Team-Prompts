@@ -4,6 +4,11 @@ namespace TeamPrompts.Domain.Entities;
 public class Prompt
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>The workspace this prompt belongs to (scopes the right Prompt Library panel).</summary>
+    public Guid WorkspaceId { get; set; }
+    public Workspace? Workspace { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }

@@ -18,11 +18,12 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, pruneScripts } =
+  const { activeWorkspaceId, activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, pruneScripts } =
     useWorkspace();
 
   const { data: scripts, isLoading } = useGetApiScripts(
-    search.trim() ? { search: search.trim() } : undefined,
+    { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) },
+    { query: { enabled: !!activeWorkspaceId } },
   );
   const del = useDeleteApiScriptsId();
 

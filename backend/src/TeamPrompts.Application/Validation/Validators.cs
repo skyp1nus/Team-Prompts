@@ -30,10 +30,29 @@ public sealed class UpdateScriptRequestValidator : AbstractValidator<UpdateScrip
     public UpdateScriptRequestValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
 }
 
+public sealed class CreateWorkspaceRequestValidator : AbstractValidator<CreateWorkspaceRequest>
+{
+    public CreateWorkspaceRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Key).MaximumLength(10);
+    }
+}
+
+public sealed class UpdateWorkspaceRequestValidator : AbstractValidator<UpdateWorkspaceRequest>
+{
+    public UpdateWorkspaceRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Key).MaximumLength(10);
+    }
+}
+
 public sealed class CreatePromptRequestValidator : AbstractValidator<CreatePromptRequest>
 {
     public CreatePromptRequestValidator()
     {
+        RuleFor(x => x.WorkspaceId).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
         RuleFor(x => x.Content).NotEmpty();
     }

@@ -9,6 +9,7 @@ namespace TeamPrompts.Infrastructure.Persistence;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser>(options), IAppDbContext
 {
+    public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Script> Scripts => Set<Script>();
     public DbSet<Prompt> Prompts => Set<Prompt>();
     public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
@@ -26,6 +27,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     {
         base.OnModelCreating(b);
 
+        b.Entity<Workspace>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Key).HasMaxLength(10);
+            e.Property(x => x.AvatarStorageKey).HasMaxLength(450);
+            e.Property(x => x.AvatarContentType).HasMaxLength(200);
+            e.Property(x => x.CreatedByUserId).HasMaxLength(450);
+            e.HasIndex(x => x.SortOrder);
+        });
+
         b.Entity<Script>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(300).IsRequired();
@@ -33,6 +44,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.CreatedByUserId).HasMaxLength(450);
             e.HasIndex(x => x.Name);
             e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => x.WorkspaceId);
+
+            // Restrict, not cascade: deleting a workspace reassigns its scripts to General first
+            // (see WorkspaceService.DeleteAsync), so the DB never silently drops scripts.
+            e.HasOne(x => x.Workspace)
+                .WithMany(w => w.Scripts)
+                .HasForeignKey(x => x.WorkspaceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<Prompt>(e =>
@@ -40,6 +59,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(x => x.Name).HasMaxLength(300).IsRequired();
             e.Property(x => x.CreatedByUserId).HasMaxLength(450);
             e.HasIndex(x => x.Name);
+            e.HasIndex(x => x.WorkspaceId);
+
+            e.HasOne(x => x.Workspace)
+                .WithMany(w => w.Prompts)
+                .HasForeignKey(x => x.WorkspaceId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // Two relationships to PromptVersion: the version list (cascade) and the Main pointer (restrict).
             e.HasMany(x => x.Versions)

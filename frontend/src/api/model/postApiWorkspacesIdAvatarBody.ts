@@ -4,16 +4,13 @@
  * TeamPrompts.Api | v1
  * OpenAPI spec version: 1.0.0
  */
+import type { PostApiWorkspacesIdAvatarBodyHeaders } from './postApiWorkspacesIdAvatarBodyHeaders';
 
-export type PostApiScriptsBody = {
-  workspaceId?: string;
-} & {
+export type PostApiWorkspacesIdAvatarBody = {
   ContentType?: string;
   ContentDisposition?: string;
-  Headers?: {[key: string]: string[]};
+  Headers?: PostApiWorkspacesIdAvatarBodyHeaders;
   Length?: number;
   Name?: string;
   FileName?: string;
-} & {
-  name?: string;
 };

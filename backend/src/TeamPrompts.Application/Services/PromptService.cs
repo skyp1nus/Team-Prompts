@@ -9,7 +9,7 @@ namespace TeamPrompts.Application.Services;
 
 public interface IPromptService
 {
-    Task<IReadOnlyList<PromptListItemDto>> ListAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, CancellationToken ct = default);
     Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default);
     Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default);
     Task<PromptDetailDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
@@ -24,9 +24,13 @@ public sealed class PromptService(
     IUserDirectory users,
     IActivityLogger activity) : IPromptService
 {
-    public async Task<IReadOnlyList<PromptListItemDto>> ListAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, CancellationToken ct = default)
     {
-        var rows = await db.Prompts.AsNoTracking()
+        var q = db.Prompts.AsNoTracking();
+        if (workspaceId is { } wsId)
+            q = q.Where(p => p.WorkspaceId == wsId);
+
+        var rows = await q
             .OrderByDescending(p => p.UpdatedAt)
             .Select(p => new
             {
@@ -65,8 +69,11 @@ public sealed class PromptService(
 
     public async Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default)
     {
+        if (!await db.Workspaces.AnyAsync(w => w.Id == req.WorkspaceId, ct))
+            throw new AppValidationException("Unknown workspace.");
+
         var userId = currentUser.UserId ?? string.Empty;
-        var prompt = new Prompt { Name = req.Name.Trim(), CreatedByUserId = userId };
+        var prompt = new Prompt { WorkspaceId = req.WorkspaceId, Name = req.Name.Trim(), CreatedByUserId = userId };
         var version = new PromptVersion
         {
             PromptId = prompt.Id,

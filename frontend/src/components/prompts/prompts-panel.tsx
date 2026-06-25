@@ -16,8 +16,12 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function PromptsPanel() {
   const qc = useQueryClient();
-  const { data: prompts, isLoading } = useGetApiPrompts();
-  const { selectedPromptIds, togglePrompt, prunePrompts, promptVersions } = useWorkspace();
+  const { activeWorkspaceId, selectedPromptIds, togglePrompt, prunePrompts, promptVersions } =
+    useWorkspace();
+  const { data: prompts, isLoading } = useGetApiPrompts(
+    { workspaceId: activeWorkspaceId },
+    { query: { enabled: !!activeWorkspaceId } },
+  );
   const del = useDeleteApiPromptsId();
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
 

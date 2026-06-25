@@ -6,5 +6,6 @@
  */
 
 export type GetApiScriptsParams = {
+workspaceId?: string;
 search?: string;
 };
