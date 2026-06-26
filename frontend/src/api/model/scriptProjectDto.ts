@@ -4,18 +4,19 @@
  * TeamPrompts.Api | v1
  * OpenAPI spec version: 1.0.0
  */
-import type { PromptKind } from './promptKind';
-import type { PromptVersionDto } from './promptVersionDto';
+import type { ScriptDto } from './scriptDto';
 import type { UserRef } from './userRef';
 
-export interface PromptDetailDto {
+export interface ScriptProjectDto {
   id: string;
+  workspaceId: string;
   name: string;
   /** @nullable */
-  mainVersionId: string | null;
+  originalScriptId: string | null;
+  sortOrder: number;
+  original: unknown | null | ScriptDto;
+  variants: ScriptDto[];
   createdBy: UserRef;
   createdAt: string;
   updatedAt: string;
-  versions: PromptVersionDto[];
-  kind: PromptKind;
 }

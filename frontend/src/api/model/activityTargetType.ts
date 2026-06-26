@@ -16,4 +16,5 @@ export const ActivityTargetType = {
   GenerationSession: 'GenerationSession',
   GenerationResult: 'GenerationResult',
   User: 'User',
+  ScriptProject: 'ScriptProject',
 } as const;

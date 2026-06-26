@@ -4,6 +4,7 @@
  * TeamPrompts.Api | v1
  * OpenAPI spec version: 1.0.0
  */
+import type { PromptKind } from './promptKind';
 import type { UserRef } from './userRef';
 
 export interface PromptListItemDto {
@@ -15,4 +16,5 @@ export interface PromptListItemDto {
   createdAt: string;
   updatedAt: string;
   versionCount: number;
+  kind: PromptKind;
 }
