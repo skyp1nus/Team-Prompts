@@ -4,10 +4,8 @@
  * TeamPrompts.Api | v1
  * OpenAPI spec version: 1.0.0
  */
-import type { ScriptKind } from './scriptKind';
 
-export type GetApiScriptsParams = {
+export type GetApiScriptProjectsParams = {
 workspaceId?: string;
 search?: string;
-kind?: ScriptKind;
 };

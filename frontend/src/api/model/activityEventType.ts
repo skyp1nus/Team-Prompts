@@ -28,4 +28,8 @@ export const ActivityEventType = {
   ScriptGenerationsCleared: 'ScriptGenerationsCleared',
   ResultHighlighted: 'ResultHighlighted',
   ResultUnhighlighted: 'ResultUnhighlighted',
+  ScriptProjectCreated: 'ScriptProjectCreated',
+  ScriptProjectDeleted: 'ScriptProjectDeleted',
+  ScriptVariantGenerated: 'ScriptVariantGenerated',
+  ScriptVariantPromoted: 'ScriptVariantPromoted',
 } as const;

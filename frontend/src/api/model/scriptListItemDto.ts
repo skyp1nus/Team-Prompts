@@ -5,6 +5,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { FileType } from './fileType';
+import type { ScriptKind } from './scriptKind';
 import type { UserRef } from './userRef';
 
 export interface ScriptListItemDto {
@@ -16,4 +17,7 @@ export interface ScriptListItemDto {
   updatedAt: string;
   createdBy: UserRef;
   sessionCount: number;
+  /** @nullable */
+  projectId: string | null;
+  kind: ScriptKind;
 }

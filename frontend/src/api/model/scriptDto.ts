@@ -5,6 +5,8 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { FileType } from './fileType';
+import type { ScriptKind } from './scriptKind';
+import type { SessionStatus } from './sessionStatus';
 import type { UserRef } from './userRef';
 
 export interface ScriptDto {
@@ -16,4 +18,16 @@ export interface ScriptDto {
   createdAt: string;
   updatedAt: string;
   createdBy: UserRef;
+  /** @nullable */
+  projectId: string | null;
+  kind: ScriptKind;
+  /** @nullable */
+  sourceScriptId: string | null;
+  /** @nullable */
+  sourcePromptVersionId: string | null;
+  /** @nullable */
+  model: string | null;
+  variantStatus: unknown | null | SessionStatus;
+  /** @nullable */
+  variantError: string | null;
 }
