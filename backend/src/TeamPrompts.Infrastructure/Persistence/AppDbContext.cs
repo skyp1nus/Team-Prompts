@@ -10,6 +10,7 @@ namespace TeamPrompts.Infrastructure.Persistence;
 public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser>(options), IAppDbContext
 {
     public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<ScriptProject> ScriptProjects => Set<ScriptProject>();
     public DbSet<Script> Scripts => Set<Script>();
     public DbSet<Prompt> Prompts => Set<Prompt>();
     public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
@@ -37,14 +38,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasIndex(x => x.SortOrder);
         });
 
+        b.Entity<ScriptProject>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(300).IsRequired();
+            e.Property(x => x.CreatedByUserId).HasMaxLength(450);
+            e.HasIndex(x => x.WorkspaceId);
+            // Rail orders projects by SortOrder within a workspace — index the pair it sorts on.
+            e.HasIndex(x => new { x.WorkspaceId, x.SortOrder });
+
+            // Restrict, not cascade: deleting a workspace reassigns its projects to General first
+            // (see WorkspaceService.DeleteAsync), matching the Script/Prompt convention.
+            e.HasOne(x => x.Workspace)
+                .WithMany(w => w.Projects)
+                .HasForeignKey(x => x.WorkspaceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         b.Entity<Script>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(300).IsRequired();
             e.Property(x => x.OriginalFileName).HasMaxLength(500);
             e.Property(x => x.CreatedByUserId).HasMaxLength(450);
+            e.Property(x => x.Model).HasMaxLength(200);
+            e.Property(x => x.VariantError).HasMaxLength(4000);
             e.HasIndex(x => x.Name);
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => x.WorkspaceId);
+            e.HasIndex(x => x.ProjectId);
 
             // Restrict, not cascade: deleting a workspace reassigns its scripts to General first
             // (see WorkspaceService.DeleteAsync), so the DB never silently drops scripts.
@@ -52,6 +72,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
                 .WithMany(w => w.Scripts)
                 .HasForeignKey(x => x.WorkspaceId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Deleting a project nulls its scripts' ProjectId; the service decides what to do with the
+            // detached Original/variants (variants are pruned, the Original is kept ungrouped).
+            e.HasOne(x => x.Project)
+                .WithMany(p => p.Scripts)
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Self-ref: a Variant points at its Original. NoAction — no cascade cycle; the service
+            // handles deletion ordering (delete variants before/with the Original).
+            e.HasOne(x => x.SourceScript)
+                .WithMany()
+                .HasForeignKey(x => x.SourceScriptId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         b.Entity<Prompt>(e =>

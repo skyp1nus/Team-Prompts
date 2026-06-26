@@ -9,6 +9,22 @@ public enum FileType
     Txt = 1,
 }
 
+/// <summary>Whether a Script is the uploaded source (Original) or an AI-generated alternative (Variant).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ScriptKind
+{
+    Original = 0,
+    Variant = 1,
+}
+
+/// <summary>Whether a Prompt generates YouTube metadata or transforms a script into a new variant.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PromptKind
+{
+    Metadata = 0,
+    ScriptTransform = 1,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum RunStatus
 {
@@ -63,6 +79,10 @@ public enum ActivityEventType
     ScriptGenerationsCleared = 16,
     ResultHighlighted = 17,
     ResultUnhighlighted = 18,
+    ScriptProjectCreated = 19,
+    ScriptProjectDeleted = 20,
+    ScriptVariantGenerated = 21,
+    ScriptVariantPromoted = 22,
 }
 
 /// <summary>The entity an activity event points at, for click-through in the feed.</summary>
@@ -76,4 +96,5 @@ public enum ActivityTargetType
     GenerationSession = 4,
     GenerationResult = 5,
     User = 6,
+    ScriptProject = 7,
 }

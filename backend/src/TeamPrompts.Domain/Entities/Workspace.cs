@@ -31,4 +31,5 @@ public class Workspace
 
     public ICollection<Script> Scripts { get; set; } = new List<Script>();
     public ICollection<Prompt> Prompts { get; set; } = new List<Prompt>();
+    public ICollection<ScriptProject> Projects { get; set; } = new List<ScriptProject>();
 }
