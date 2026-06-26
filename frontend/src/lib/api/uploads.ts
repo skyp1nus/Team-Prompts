@@ -1,6 +1,6 @@
-import type { ScriptDto, WorkspaceDto } from "@/api/model";
+import type { ScriptDto, ScriptProjectDto, WorkspaceDto } from "@/api/model";
 import { AXIOS_INSTANCE } from "@/lib/api/axios-instance";
-import { MOCK, mockUpload } from "@/lib/api/mock";
+import { MOCK, mockCreateProject, mockUpload } from "@/lib/api/mock";
 
 /**
  * Hand-written multipart uploads — the generated client models IFormFile poorly,
@@ -13,6 +13,24 @@ export async function uploadScript(file: File, workspaceId: string, name?: strin
   form.append("file", file);
   if (name) form.append("name", name);
   const { data } = await AXIOS_INSTANCE.post<ScriptDto>("/api/scripts", form);
+  return data;
+}
+
+/**
+ * Upload a file and wrap it in a new project (folder). The file becomes the project's Original
+ * script; variants are generated into the project afterwards. Multipart, same IFormFile reason.
+ */
+export async function createProjectFromUpload(
+  file: File,
+  workspaceId: string,
+  name?: string,
+): Promise<ScriptProjectDto> {
+  if (MOCK) return mockCreateProject(file, workspaceId, name);
+  const form = new FormData();
+  form.append("workspaceId", workspaceId);
+  form.append("file", file);
+  if (name) form.append("name", name);
+  const { data } = await AXIOS_INSTANCE.post<ScriptProjectDto>("/api/script-projects", form);
   return data;
 }
 

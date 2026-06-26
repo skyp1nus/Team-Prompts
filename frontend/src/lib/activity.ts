@@ -37,6 +37,10 @@ export const ACTIVITY_META: Record<ActivityEventType, { label: string; icon: Luc
   [ActivityEventType.GenerationSessionDeleted]: { label: "Deleted a generation run", icon: Trash2, tone: "danger" },
   [ActivityEventType.GenerationRunDeleted]: { label: "Deleted a batch run", icon: Trash2, tone: "danger" },
   [ActivityEventType.ScriptGenerationsCleared]: { label: "Cleared the canvas", icon: Trash2, tone: "danger" },
+  [ActivityEventType.ScriptProjectCreated]: { label: "Created a project", icon: FileUp, tone: "primary" },
+  [ActivityEventType.ScriptProjectDeleted]: { label: "Deleted a project", icon: Trash2, tone: "danger" },
+  [ActivityEventType.ScriptVariantGenerated]: { label: "Generated a variant", icon: Sparkles, tone: "ok" },
+  [ActivityEventType.ScriptVariantPromoted]: { label: "Promoted a variant", icon: Crown, tone: "primary" },
 };
 
 export const TONE_CLASS: Record<Tone, string> = {

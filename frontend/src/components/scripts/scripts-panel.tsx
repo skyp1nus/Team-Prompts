@@ -1,13 +1,21 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, PanelLeftClose, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, ChevronRight, Eye, Folder, Loader2, PanelLeftClose, Search, Sparkles, TriangleAlert, X } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { useDeleteApiScriptsId, useGetApiScripts } from "@/api/endpoints/scripts/scripts";
-import { FileType, type ScriptListItemDto } from "@/api/model";
+import {
+  useDeleteApiScriptProjectsId,
+  useDeleteApiScriptProjectsIdVariantsVariantId,
+  useGetApiScriptProjects,
+  useGetApiScriptProjectsId,
+} from "@/api/endpoints/script-projects/script-projects";
+import { FileType, type ScriptDto, ScriptKind, type ScriptProjectListItemDto, SessionStatus } from "@/api/model";
+import { GenerateVariantDialog } from "@/components/scripts/generate-variant-dialog";
+import { ScriptViewerDialog } from "@/components/scripts/script-viewer-dialog";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,59 +25,25 @@ import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
+function inProgress(s: ScriptDto["variantStatus"]) {
+  return s === SessionStatus.Queued || s === SessionStatus.Streaming;
+}
+
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
-  const qc = useQueryClient();
-  const {
-    activeWorkspaceId,
-    activeScriptId,
-    setActiveScriptId,
-    batchScriptIds,
-    toggleBatchScript,
-    pruneScripts,
-    setScriptsPanelCollapsed,
-  } = useWorkspace();
+  const { activeWorkspaceId, expandedProjectIds, setScriptsPanelCollapsed } = useWorkspace();
 
-  const { data: scripts, isLoading } = useGetApiScripts(
-    { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) },
-    { query: { enabled: !!activeWorkspaceId } },
-  );
-  const del = useDeleteApiScriptsId();
-
-  // Self-heal: drop any selected script id that no longer exists, so a stale selection
-  // (e.g. after deleting a batch-selected script) never gets sent to generation.
-  const isSearching = !!search.trim();
-  useEffect(() => {
-    if (isSearching || !scripts) return;
-    pruneScripts(scripts.map((s) => s.id));
-  }, [scripts, isSearching, pruneScripts]);
-
-  const onDelete = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}" and all its generations?`)) return;
-    del.mutate(
-      { id },
-      {
-        onSuccess: async () => {
-          if (activeScriptId === id) setActiveScriptId(null);
-          if (batchScriptIds.includes(id)) toggleBatchScript(id);
-          await invalidatePath(qc, "/api/scripts");
-          toast.success("Script deleted");
-        },
-        onError: () => toast.error("Delete failed"),
-      },
-    );
-  };
-
-  const selCount = batchScriptIds.length;
+  const params = { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) };
+  const { data: projects, isLoading } = useGetApiScriptProjects(params, {
+    query: { enabled: !!activeWorkspaceId },
+  });
 
   return (
     <aside className="flex h-full flex-col border-r border-border bg-background">
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
-        <h2 className="eyebrow">Scripts</h2>
+        <h2 className="eyebrow">Projects</h2>
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-faint">
-            {selCount ? `${selCount} selected` : (scripts?.length ?? 0)}
-          </span>
+          <span className="text-[11px] text-faint">{projects?.length ?? 0}</span>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -77,7 +51,7 @@ export function ScriptsPanel() {
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setScriptsPanelCollapsed(true)}
-                  aria-label="Collapse scripts panel"
+                  aria-label="Collapse projects panel"
                 >
                   <PanelLeftClose />
                 </Button>
@@ -102,7 +76,7 @@ export function ScriptsPanel() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search scripts…"
+            placeholder="Search projects…"
             className="h-9 pr-7 pl-[30px] text-[12.5px]"
           />
           {search && (
@@ -125,25 +99,17 @@ export function ScriptsPanel() {
         <div className="px-2.5 pt-0.5 pb-4">
           {isLoading &&
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1 h-[52px] w-full" />)}
-          {!isLoading && (scripts?.length ?? 0) === 0 && (
+
+          {!isLoading && (projects?.length ?? 0) === 0 && (
             <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
-              No scripts yet.
+              No projects yet.
               <br />
-              Upload a PDF or TXT to begin.
+              Upload a PDF or TXT to start one.
             </p>
           )}
-          {scripts?.map((s) => (
-            <ScriptRow
-              key={s.id}
-              script={s}
-              active={s.id === activeScriptId}
-              selected={batchScriptIds.includes(s.id)}
-              onOpen={() => {
-                toggleBatchScript(s.id);
-                setActiveScriptId(s.id);
-              }}
-              onDelete={() => onDelete(s.id, s.name)}
-            />
+
+          {projects?.map((p) => (
+            <ProjectFolder key={p.id} project={p} expanded={expandedProjectIds.includes(p.id)} />
           ))}
         </div>
       </ScrollArea>
@@ -151,60 +117,243 @@ export function ScriptsPanel() {
   );
 }
 
-function ScriptRow({
+function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDto; expanded: boolean }) {
+  const qc = useQueryClient();
+  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
+    useWorkspace();
+  const delProject = useDeleteApiScriptProjectsId();
+
+  const { data: detail, isLoading } = useGetApiScriptProjectsId(project.id, {
+    query: {
+      enabled: expanded,
+      refetchInterval: (q) =>
+        (q.state.data?.variants ?? []).some((v) => inProgress(v.variantStatus)) ? 2000 : false,
+    },
+  });
+
+  // orval types a nullable nested ref as `unknown | null | ScriptDto`; narrow it once.
+  const original = (detail?.original ?? null) as ScriptDto | null;
+
+  const onOpenChange = (o: boolean) => {
+    setProjectExpanded(project.id, o);
+    if (o && project.originalScriptId) setActiveScriptId(project.originalScriptId);
+  };
+
+  const onDeleteProject = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Delete project "${project.name}" and its generated variants?`)) return;
+    delProject.mutate(
+      { id: project.id },
+      {
+        onSuccess: async () => {
+          if (activeScriptId) setActiveScriptId(null);
+          await invalidatePath(qc, "/api/script-projects", "/api/scripts");
+          toast.success("Project deleted");
+        },
+        onError: () => toast.error("Delete failed"),
+      },
+    );
+  };
+
+  return (
+    <Collapsible open={expanded} onOpenChange={onOpenChange} className="mb-0.5">
+      <div className="group relative flex items-center rounded-[9px] transition-colors hover:bg-accent">
+        <CollapsibleTrigger
+          render={
+            <button className="flex min-w-0 flex-1 items-center gap-2 rounded-[9px] p-2.5 text-left" />
+          }
+        >
+          <ChevronRight
+            className={cn("size-4 shrink-0 text-faint transition-transform", expanded && "rotate-90")}
+          />
+          <Folder className="size-[18px] shrink-0 text-primary/80" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
+        </CollapsibleTrigger>
+        <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
+          <GenerateVariantDialog
+            projectId={project.id}
+            trigger={
+              <button
+                className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-60 transition-colors group-hover:opacity-100 hover:bg-card hover:text-primary"
+                title="Generate variant"
+              >
+                <Sparkles className="size-3.5" />
+              </button>
+            }
+          />
+          <button
+            onClick={onDeleteProject}
+            className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+            title="Delete project"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <CollapsibleContent>
+        <div className="ml-[18px] border-l border-border pl-2">
+          {isLoading && <Skeleton className="my-1 h-9 w-full" />}
+          {original && (
+            <ScriptLeaf
+              script={original}
+              isSource
+              active={original.id === activeScriptId}
+              selected={batchScriptIds.includes(original.id)}
+              onOpen={() => {
+                toggleBatchScript(original.id);
+                setActiveScriptId(original.id);
+              }}
+            />
+          )}
+          {detail?.variants.map((v) => (
+            <ScriptLeaf
+              key={v.id}
+              script={v}
+              active={v.id === activeScriptId}
+              selected={batchScriptIds.includes(v.id)}
+              onOpen={() => {
+                toggleBatchScript(v.id);
+                setActiveScriptId(v.id);
+              }}
+              projectId={project.id}
+            />
+          ))}
+          {detail && !original && detail.variants.length === 0 && (
+            <p className="px-2 py-2 text-[11.5px] text-faint">Empty project.</p>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function ScriptLeaf({
   script,
+  isSource,
   active,
   selected,
   onOpen,
-  onDelete,
+  projectId,
 }: {
-  script: ScriptListItemDto;
+  script: ScriptDto;
+  /** True for the project's uploaded source script. */
+  isSource?: boolean;
   active: boolean;
   selected: boolean;
   onOpen: () => void;
-  onDelete: () => void;
+  /** Set for variant leaves → enables delete. Omitted for the source. */
+  projectId?: string;
 }) {
+  const qc = useQueryClient();
+  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript } = useWorkspace();
+  const delVariant = useDeleteApiScriptProjectsIdVariantsVariantId();
+  const [viewOpen, setViewOpen] = useState(false);
+
+  const isVariant = script.kind === ScriptKind.Variant;
   const isPdf = script.fileType === FileType.Pdf;
+  const busy = inProgress(script.variantStatus);
+  const failed = script.variantStatus === SessionStatus.Failed;
+
+  const onDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!projectId) return;
+    if (!confirm(`Delete "${script.name}"?`)) return;
+    delVariant.mutate(
+      { id: projectId, variantId: script.id },
+      {
+        onSuccess: async () => {
+          if (activeScriptId === script.id) setActiveScriptId(null);
+          if (batchScriptIds.includes(script.id)) toggleBatchScript(script.id);
+          await invalidatePath(qc, "/api/script-projects");
+          toast.success("Deleted");
+        },
+        onError: () => toast.error("Delete failed"),
+      },
+    );
+  };
+
   return (
     <div
       onClick={onOpen}
       className={cn(
-        "group relative mb-0.5 flex cursor-pointer items-start gap-2.5 rounded-[9px] p-2.5 transition-colors hover:bg-accent",
+        "group/leaf relative my-[2px] flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1.5 pl-2 transition-colors hover:bg-accent",
         active && "bg-primary/[0.07]",
       )}
     >
       <span
         className={cn(
-          "mt-[5px] flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
+          "flex size-[18px] shrink-0 items-center justify-center rounded border-[1.5px] text-[10px] transition-colors",
           selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
         )}
       >
-        {selected && <Check className="size-3" />}
+        {selected && <Check className="size-2.5" />}
       </span>
+
       <span
         className={cn(
-          "flex size-[30px] shrink-0 items-center justify-center rounded-[7px] text-[9px] font-bold",
-          isPdf ? "bg-destructive/10 text-destructive" : "bg-ok/15 text-ok",
+          "flex size-[26px] shrink-0 items-center justify-center rounded-[6px] text-[8px] font-bold",
+          isVariant
+            ? "bg-primary/10 text-primary"
+            : isPdf
+              ? "bg-destructive/10 text-destructive"
+              : "bg-ok/15 text-ok",
         )}
       >
-        {isPdf ? "PDF" : "TXT"}
+        {isVariant ? "AI" : isPdf ? "PDF" : "TXT"}
       </span>
+
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium">{script.name}</div>
-        <div className="mt-0.5 text-[11px] text-faint">
-          {isPdf ? "PDF" : "TXT"} · {script.sessionCount} gen · {formatRelative(script.updatedAt)}
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[12.5px] font-medium">{script.name}</span>
+          {isSource && (
+            <span className="shrink-0 rounded-[5px] bg-primary/[0.1] px-1.5 py-px text-[9px] font-bold tracking-wide text-primary">
+              SOURCE
+            </span>
+          )}
+        </div>
+        <div className="mt-px flex items-center gap-1 text-[10.5px] text-faint">
+          {isVariant ? (
+            busy ? (
+              <>
+                <Loader2 className="size-3 animate-spin" /> Generating…
+              </>
+            ) : failed ? (
+              <span className="flex items-center gap-1 text-destructive">
+                <TriangleAlert className="size-3" /> Failed
+              </span>
+            ) : (
+              <>AI draft · {formatRelative(script.updatedAt)}</>
+            )
+          ) : (
+            <>Uploaded {isPdf ? "PDF" : "TXT"}</>
+          )}
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="flex size-[22px] shrink-0 items-center justify-center rounded-md text-faint opacity-50 transition-colors group-hover:opacity-100 hover:bg-accent hover:text-foreground"
-        title="Remove"
-      >
-        <X className="size-3.5" />
-      </button>
+
+      {!busy && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setViewOpen(true);
+          }}
+          className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
+          title="View text"
+        >
+          <Eye className="size-3.5" />
+        </button>
+      )}
+      {isVariant && !busy && (
+        <button
+          onClick={onDelete}
+          className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
+          title="Delete"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+
+      <ScriptViewerDialog script={script} open={viewOpen} onOpenChange={setViewOpen} />
     </div>
   );
 }
