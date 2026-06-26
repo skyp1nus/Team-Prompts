@@ -10,10 +10,13 @@ import type {
   GenerationResultDto,
   ModelDto,
   PromptDetailDto,
+  PromptKind,
   PromptListItemDto,
   PromptVersionDto,
   ScriptDto,
   ScriptListItemDto,
+  ScriptProjectDto,
+  ScriptProjectListItemDto,
   SessionWithResultsDto,
   SettingsDto,
   TrayItemDto,
@@ -87,8 +90,41 @@ function version(
   return { id, promptId, parentVersionId: parent, content, author: ref(author), note, isMain, createdAt: iso(daysAgo) };
 }
 
-type PromptRec = PromptDetailDto & { kind: "titles" | "desc"; workspaceId: string };
+type PromptRec = PromptDetailDto & { pool: "titles" | "desc"; workspaceId: string };
 type ScriptRec = ScriptListItemDto & { workspaceId: string };
+type ScriptProjectRec = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  originalScriptId: string | null;
+  sortOrder: number;
+  createdBy: UserRef;
+  createdAt: string;
+  updatedAt: string;
+  original: ScriptDto;
+  variants: ScriptDto[];
+};
+
+/** Build a full ScriptDto (mock) with all the project/variant fields the rail reads. */
+function scriptDtoFull(o: Partial<ScriptDto> & { id: string; name: string }): ScriptDto {
+  return {
+    id: o.id,
+    name: o.name,
+    originalFileName: o.originalFileName ?? "",
+    fileType: o.fileType ?? "Txt",
+    extractedText: o.extractedText ?? "Mock script text.",
+    createdAt: o.createdAt ?? iso(1),
+    updatedAt: o.updatedAt ?? iso(1),
+    createdBy: o.createdBy ?? ref("Mara A."),
+    projectId: o.projectId ?? null,
+    kind: o.kind ?? "Original",
+    sourceScriptId: o.sourceScriptId ?? null,
+    sourcePromptVersionId: o.sourcePromptVersionId ?? null,
+    model: o.model ?? null,
+    variantStatus: o.variantStatus ?? null,
+    variantError: o.variantError ?? null,
+  };
+}
 
 function makeResults(
   sessionId: string,
@@ -141,7 +177,7 @@ function session(
       isMainVersion: true,
       promptVersionNote: null,
     },
-    results: makeResults(id, prompt.kind, count, favIdx, hiIdx),
+    results: makeResults(id, prompt.pool, count, favIdx, hiIdx),
   };
 }
 
@@ -178,6 +214,91 @@ function buildStore() {
     prompt("p4", "Calm Educational Titles", "titles", WS_T, [
       ["v1", null, "Jules Bennett", 6, "Initial draft", "Write 5 calm, educational YouTube titles. Be clear and descriptive rather than sensational.", true],
     ]),
+    prompt(
+      "p5",
+      "Condense to a вижимка",
+      "titles",
+      WS_GENERAL,
+      [
+        ["v1", null, "Mara A.", 9, "Initial draft", "Condense this video script into a tight ~150-word summary (вижимка) that keeps the key beats and the hook. Plain prose, ready to record.", true],
+      ],
+      "ScriptTransform",
+    ),
+  ];
+
+  const prOriginal = scriptDtoFull({
+    id: "prsc1",
+    name: "Desk Setup Tutorial",
+    originalFileName: "Desk Setup Tutorial.pdf",
+    fileType: "Pdf",
+    projectId: "pr1",
+    kind: "Original",
+    extractedText: "Full desk setup tutorial script…",
+    createdAt: iso(3),
+    updatedAt: iso(3),
+  });
+  const prVarDone = scriptDtoFull({
+    id: "prsc2",
+    name: "Condense to a вижимка",
+    projectId: "pr1",
+    kind: "Variant",
+    sourceScriptId: "prsc1",
+    sourcePromptVersionId: "p5v1",
+    model: "anthropic/claude-3.7-sonnet",
+    variantStatus: "Completed",
+    extractedText: "A tight вижимка of the desk setup tutorial that keeps the hook and the budget order.",
+    createdAt: iso(1),
+    updatedAt: iso(1),
+  });
+  const prVarBusy = scriptDtoFull({
+    id: "prsc3",
+    name: "Energetic rewrite",
+    projectId: "pr1",
+    kind: "Variant",
+    sourceScriptId: "prsc1",
+    model: "openai/gpt-4o",
+    variantStatus: "Streaming",
+    extractedText: "",
+    createdAt: iso(0),
+    updatedAt: iso(0),
+  });
+  // Every script lives in a project now — wrap each seed script in its own single-script project.
+  const wrapProject = (s: ScriptRec, pid: string): ScriptProjectRec => ({
+    id: pid,
+    workspaceId: s.workspaceId,
+    name: s.name,
+    originalScriptId: s.id,
+    sortOrder: 0,
+    createdBy: ref("Mara A."),
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+    original: scriptDtoFull({
+      id: s.id,
+      name: s.name,
+      originalFileName: s.originalFileName,
+      fileType: s.fileType,
+      projectId: pid,
+      kind: "Original",
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }),
+    variants: [],
+  });
+
+  const projects: ScriptProjectRec[] = [
+    {
+      id: "pr1",
+      workspaceId: WS_GENERAL,
+      name: "Desk Setup Tutorial",
+      originalScriptId: "prsc1",
+      sortOrder: -1,
+      createdBy: ref("Mara A."),
+      createdAt: iso(3),
+      updatedAt: iso(0),
+      original: prOriginal,
+      variants: [prVarBusy, prVarDone],
+    },
+    ...scripts.map((s, i) => wrapProject(s, `wp${i + 1}`)),
   ];
 
   const sessionsByScript: Record<string, SessionWithResultsDto[]> = {
@@ -196,7 +317,7 @@ function buildStore() {
     sc4: [],
   };
 
-  return { workspaces, scripts, prompts, sessionsByScript };
+  return { workspaces, scripts, prompts, projects, sessionsByScript };
 }
 
 function ws2(id: string, name: string, key: string | null, sortOrder: number, isSystem: boolean): WorkspaceDto {
@@ -224,6 +345,8 @@ function sc(id: string, name: string, fileType: "Pdf" | "Txt", daysAgo: number, 
     updatedAt: iso(daysAgo),
     createdBy: ref("Mara A."),
     sessionCount,
+    projectId: null,
+    kind: "Original",
   };
 }
 function prompt(
@@ -232,6 +355,7 @@ function prompt(
   kind: "titles" | "desc",
   workspaceId: string,
   vs: [string, string | null, string, number, string, string, boolean][],
+  promptKind: PromptKind = "Metadata",
 ): PromptRec {
   const versions = vs.map(([vid, parent, author, days, note, content, isMain]) =>
     version(id, `${id}${vid}`, parent ? `${id}${parent}` : null, author, days, note, content, isMain),
@@ -240,7 +364,8 @@ function prompt(
   return {
     id,
     name,
-    kind,
+    pool: kind,
+    kind: promptKind,
     workspaceId,
     mainVersionId: main.id,
     createdBy: ref("Mara A."),
@@ -291,6 +416,36 @@ function listItem(p: PromptRec): PromptListItemDto {
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     versionCount: p.versions.length,
+    kind: p.kind,
+  };
+}
+
+function projectListItem(p: ScriptProjectRec): ScriptProjectListItemDto {
+  return {
+    id: p.id,
+    workspaceId: p.workspaceId,
+    name: p.name,
+    originalScriptId: p.originalScriptId,
+    sortOrder: p.sortOrder,
+    variantCount: p.variants.length,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+}
+
+function projectDto(p: ScriptProjectRec): ScriptProjectDto {
+  return {
+    id: p.id,
+    workspaceId: p.workspaceId,
+    name: p.name,
+    originalScriptId: p.originalScriptId,
+    sortOrder: p.sortOrder,
+    original: p.original,
+    variants: p.variants,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
   };
 }
 
@@ -385,28 +540,107 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   if (mm && method === "GET") return reply<unknown[]>([]);
   mm = m(/^\/api\/scripts\/([^/]+)$/);
   if (mm && method === "GET") {
-    const s = store.scripts.find((x) => x.id === mm![1]);
-    return reply<ScriptDto>({
-      id: mm[1],
-      name: s?.name ?? "Script",
-      originalFileName: s?.originalFileName ?? "file",
-      fileType: s?.fileType ?? "Txt",
-      extractedText: "Mock extracted text.",
-      storageKey: "mock",
-      createdAt: s?.createdAt ?? iso(1),
-      updatedAt: s?.updatedAt ?? iso(1),
-      createdBy: ref("Mara A."),
-    } as unknown as ScriptDto);
+    const id = mm[1];
+    // A script id may be a loose script or a project's original/variant.
+    for (const pr of store.projects) {
+      const hit = pr.original.id === id ? pr.original : pr.variants.find((v) => v.id === id);
+      if (hit) return reply<ScriptDto>(hit);
+    }
+    const s = store.scripts.find((x) => x.id === id);
+    return reply<ScriptDto>(
+      scriptDtoFull({
+        id,
+        name: s?.name ?? "Script",
+        originalFileName: s?.originalFileName ?? "file",
+        fileType: s?.fileType ?? "Txt",
+        extractedText: "Mock extracted text.",
+        createdAt: s?.createdAt,
+        updatedAt: s?.updatedAt,
+        projectId: s?.projectId ?? null,
+        kind: s?.kind ?? "Original",
+      }),
+    );
   }
   if (mm && method === "DELETE") {
     store.scripts = store.scripts.filter((x) => x.id !== mm![1]);
     return reply({}, 150);
   }
 
+  // script projects (folders: one Original + generated Variants)
+  if (url === "/api/script-projects" && method === "GET") {
+    const params = (config.params ?? {}) as Record<string, unknown>;
+    const wsId = params.workspaceId as string | undefined;
+    const q = String(params.search ?? "").toLowerCase();
+    let list = store.projects;
+    if (wsId) list = list.filter((p) => p.workspaceId === wsId);
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
+    return reply<ScriptProjectListItemDto[]>(
+      [...list].sort((a, b) => a.sortOrder - b.sortOrder).map(projectListItem),
+    );
+  }
+  mm = m(/^\/api\/script-projects\/([^/]+)\/variants\/([^/]+)\/promote$/);
+  if (mm && method === "POST") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (pr) pr.originalScriptId = mm[2];
+    return reply(pr ? projectDto(pr) : {}, 150);
+  }
+  mm = m(/^\/api\/script-projects\/([^/]+)\/variants\/([^/]+)$/);
+  if (mm && method === "DELETE") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (pr) {
+      pr.variants = pr.variants.filter((v) => v.id !== mm![2]);
+      if (pr.originalScriptId === mm[2]) pr.originalScriptId = pr.original.id;
+    }
+    return reply({}, 150);
+  }
+  mm = m(/^\/api\/script-projects\/([^/]+)\/variants$/);
+  if (mm && method === "GET") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    return reply<ScriptDto[]>(pr ? pr.variants : []);
+  }
+  if (mm && method === "POST") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (!pr) return reply(null);
+    const p = store.prompts.find((x) => x.id === String(body.promptId ?? ""));
+    const variant = scriptDtoFull({
+      id: uid("prsc"),
+      name: String(body.name ?? p?.name ?? "Variant"),
+      projectId: pr.id,
+      kind: "Variant",
+      sourceScriptId: pr.originalScriptId,
+      sourcePromptVersionId: p?.mainVersionId ?? null,
+      model: defaultModel(),
+      variantStatus: "Completed",
+      extractedText: "Freshly generated mock вижимка of the source script.",
+      createdAt: iso(0),
+      updatedAt: iso(0),
+    });
+    pr.variants.unshift(variant);
+    pr.updatedAt = iso(0);
+    return reply<ScriptDto>(variant, 250);
+  }
+  mm = m(/^\/api\/script-projects\/([^/]+)$/);
+  if (mm && method === "GET") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    return reply(pr ? projectDto(pr) : null);
+  }
+  if (mm && method === "PUT") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (pr && body.name) pr.name = String(body.name);
+    return reply(pr ? projectDto(pr) : {}, 150);
+  }
+  if (mm && method === "DELETE") {
+    store.projects = store.projects.filter((x) => x.id !== mm![1]);
+    return reply({}, 150);
+  }
+
   // prompts
   if (url === "/api/prompts" && method === "GET") {
-    const wsId = (config.params as Record<string, unknown>)?.workspaceId as string | undefined;
-    const list = wsId ? store.prompts.filter((p) => p.workspaceId === wsId) : store.prompts;
+    const params = (config.params ?? {}) as Record<string, unknown>;
+    const wsId = params.workspaceId as string | undefined;
+    const kind = params.kind as PromptKind | undefined;
+    let list = wsId ? store.prompts.filter((p) => p.workspaceId === wsId) : store.prompts;
+    if (kind) list = list.filter((p) => p.kind === kind);
     return reply<PromptListItemDto[]>(list.map(listItem));
   }
   if (url === "/api/prompts" && method === "POST") {
@@ -415,7 +649,8 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
     const rec: PromptRec = {
       id,
       name: String(body.name ?? "Untitled"),
-      kind: /descr/i.test(String(body.name ?? "")) ? "desc" : "titles",
+      pool: /descr/i.test(String(body.name ?? "")) ? "desc" : "titles",
+      kind: (body.kind as PromptKind) ?? "Metadata",
       workspaceId: String(body.workspaceId ?? WS_GENERAL),
       mainVersionId: vId,
       createdBy: ref("Mara A."),
@@ -450,8 +685,9 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   if (mm && method === "GET") {
     const p = store.prompts.find((x) => x.id === mm![1]);
     if (!p) return reply(null);
-    const { kind: _kind, ...detail } = p;
-    void _kind;
+    const { pool: _pool, workspaceId: _ws, ...detail } = p;
+    void _pool;
+    void _ws;
     return reply<PromptDetailDto>(detail);
   }
   if (mm && method === "DELETE") {
@@ -556,15 +792,47 @@ export function mockUpload(file: File, workspaceId: string, name?: string): Prom
   const ext = file.name.toLowerCase().endsWith(".pdf") ? "Pdf" : "Txt";
   store.scripts.unshift(sc(id, name ?? file.name, ext, 0, 0, workspaceId));
   store.sessionsByScript[id] = [];
-  return reply<ScriptDto>({
-    id,
+  return reply<ScriptDto>(
+    scriptDtoFull({
+      id,
+      name: name ?? file.name,
+      originalFileName: file.name,
+      fileType: ext,
+      extractedText: "Mock extracted text.",
+      createdAt: iso(0),
+      updatedAt: iso(0),
+    }),
+    250,
+  );
+}
+
+/** Mock for the hand-written multipart "create project from upload" (bypasses the orval mutator). */
+export function mockCreateProject(file: File, workspaceId: string, name?: string): Promise<ScriptProjectDto> {
+  const pid = uid("pr");
+  const ext = file.name.toLowerCase().endsWith(".pdf") ? "Pdf" : "Txt";
+  const original = scriptDtoFull({
+    id: uid("prsc"),
     name: name ?? file.name,
     originalFileName: file.name,
     fileType: ext,
+    projectId: pid,
+    kind: "Original",
     extractedText: "Mock extracted text.",
-    storageKey: "mock",
     createdAt: iso(0),
     updatedAt: iso(0),
+  });
+  const rec: ScriptProjectRec = {
+    id: pid,
+    workspaceId,
+    name: name ?? file.name,
+    originalScriptId: original.id,
+    sortOrder: -1,
     createdBy: ref("Mara A."),
-  } as unknown as ScriptDto, 250);
+    createdAt: iso(0),
+    updatedAt: iso(0),
+    original,
+    variants: [],
+  };
+  store.projects.unshift(rec);
+  return reply<ScriptProjectDto>(projectDto(rec), 250);
 }

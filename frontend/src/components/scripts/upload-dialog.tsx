@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { uploadScript } from "@/lib/api/uploads";
+import { createProjectFromUpload } from "@/lib/api/uploads";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
@@ -47,7 +47,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function UploadDialog() {
   const qc = useQueryClient();
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,9 +59,16 @@ export function UploadDialog() {
 
   const onSubmit = async (values: FormValues) => {
     try {
-      await uploadScript(values.file, activeWorkspaceId, values.name?.trim() || undefined);
-      await invalidatePath(qc, "/api/scripts");
-      toast.success("Script uploaded");
+      const project = await createProjectFromUpload(
+        values.file,
+        activeWorkspaceId,
+        values.name?.trim() || undefined,
+      );
+      await invalidatePath(qc, "/api/script-projects", "/api/scripts");
+      // Open the fresh project and select its source script so the center map switches to it.
+      setProjectExpanded(project.id, true);
+      if (project.originalScriptId) setActiveScriptId(project.originalScriptId);
+      toast.success("Project created");
       setOpen(false);
       form.reset({ name: "" });
     } catch {
@@ -77,20 +84,16 @@ export function UploadDialog() {
         if (!o) form.reset({ name: "" });
       }}
     >
-      <DialogTrigger
-        render={
-          <button className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-border-strong bg-transparent px-3 py-4 text-muted-foreground transition-colors hover:border-primary hover:text-foreground" />
-        }
-      >
-        <Upload className="size-4 text-faint" />
-        <span className="text-[12px] font-medium text-muted-foreground">Drop PDF or TXT</span>
-        <span className="text-[10.5px] text-faint">or click to upload</span>
+      <DialogTrigger render={<Button variant="outline" className="h-9 w-full justify-center gap-2" />}>
+        <Plus className="size-4" /> New project
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Upload script</DialogTitle>
-          <DialogDescription>PDF or TXT. The text is extracted and stored.</DialogDescription>
+          <DialogTitle>New project</DialogTitle>
+          <DialogDescription>
+            PDF or TXT. The file becomes the project&apos;s source script — generate вижимки / variants inside it.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
@@ -160,7 +163,7 @@ export function UploadDialog() {
 
             <DialogFooter>
               <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Uploading…" : "Upload"}
+                {form.formState.isSubmitting ? "Creating…" : "Create project"}
               </Button>
             </DialogFooter>
           </form>

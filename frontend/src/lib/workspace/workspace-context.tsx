@@ -50,6 +50,11 @@ type WorkspaceValue = {
   /** Drop any selected/active script id that no longer exists (e.g. after a delete). */
   pruneScripts: (existingIds: string[]) => void;
 
+  /** Project folders currently expanded in the Scripts rail. Persisted across reloads. */
+  expandedProjectIds: string[];
+  toggleProjectExpanded: (id: string) => void;
+  setProjectExpanded: (id: string, expanded: boolean) => void;
+
   /** Models the next run fans out across (design model picker). Empty → use default. */
   runModels: string[];
   toggleRunModel: (m: string) => void;
@@ -121,6 +126,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     {},
   );
   const [batchScriptIds, setBatchScriptIds] = usePersistedState<string[]>("tp.ws.batchScripts", []);
+  const [expandedProjectIds, setExpandedProjectIds] = usePersistedState<string[]>("tp.ws.expandedProjects", []);
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
@@ -142,9 +148,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setBatchScriptIds([]);
       setSelectedPromptIds([]);
       setPromptVersions({});
+      setExpandedProjectIds([]);
       setActiveWorkspaceId(id);
     },
-    [setActiveScriptId, setBatchScriptIds, setSelectedPromptIds, setPromptVersions, setActiveWorkspaceId],
+    [
+      setActiveScriptId,
+      setBatchScriptIds,
+      setSelectedPromptIds,
+      setPromptVersions,
+      setExpandedProjectIds,
+      setActiveWorkspaceId,
+    ],
   );
 
   const toggleDockCollapsed = useCallback(() => setDockCollapsed((c) => !c), [setDockCollapsed]);
@@ -204,6 +218,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [setRunModels],
   );
 
+  const toggleProjectExpanded = useCallback(
+    (id: string) =>
+      setExpandedProjectIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])),
+    [setExpandedProjectIds],
+  );
+  const setProjectExpanded = useCallback(
+    (id: string, expanded: boolean) =>
+      setExpandedProjectIds((p) =>
+        expanded ? (p.includes(id) ? p : [...p, id]) : p.filter((x) => x !== id),
+      ),
+    [setExpandedProjectIds],
+  );
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -224,6 +251,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         toggleBatchScript,
         clearBatch,
         pruneScripts,
+        expandedProjectIds,
+        toggleProjectExpanded,
+        setProjectExpanded,
         runModels,
         toggleRunModel,
         setRunModels,

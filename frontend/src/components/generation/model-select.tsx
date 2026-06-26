@@ -30,8 +30,15 @@ export function ModelSelect({
   // Only the team's favorite models here — keeps the dropdown short instead of listing all 300+.
   const models = favIds.length > 0 ? all.filter((m) => favIds.includes(m.id)) : all;
 
+  // value→label map so the trigger shows the model name (not the raw value) without mounting all items.
+  const items = [
+    ...(includeDefault ? [{ label: "Default model", value: DEFAULT }] : []),
+    ...models.map((m) => ({ label: m.name ?? m.id, value: m.id })),
+  ];
+
   return (
     <Select
+      items={items}
       value={value ?? (includeDefault ? DEFAULT : undefined)}
       onValueChange={(v) => onChange(v === DEFAULT ? null : v)}
     >
