@@ -4,6 +4,7 @@ using TeamPrompts.Application.Common;
 using TeamPrompts.Application.Dtos;
 using TeamPrompts.Domain.Abstractions;
 using TeamPrompts.Domain.Entities;
+using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Application.Services;
 
@@ -38,7 +39,7 @@ public sealed class WorkspaceService(
             {
                 w.Id, w.Name, w.Key, w.AvatarStorageKey, w.SortOrder, w.IsSystem,
                 w.CreatedAt, w.UpdatedAt,
-                ScriptCount = w.Scripts.Count, PromptCount = w.Prompts.Count,
+                ScriptCount = w.Scripts.Count(s => s.Kind == ScriptKind.Original), PromptCount = w.Prompts.Count,
             })
             .ToListAsync(ct);
 
@@ -55,7 +56,7 @@ public sealed class WorkspaceService(
             {
                 x.Id, x.Name, x.Key, x.AvatarStorageKey, x.SortOrder, x.IsSystem,
                 x.CreatedAt, x.UpdatedAt,
-                ScriptCount = x.Scripts.Count, PromptCount = x.Prompts.Count,
+                ScriptCount = x.Scripts.Count(s => s.Kind == ScriptKind.Original), PromptCount = x.Prompts.Count,
             })
             .FirstOrDefaultAsync(ct);
         if (w is null) return null;
@@ -111,6 +112,9 @@ public sealed class WorkspaceService(
         await db.Scripts.Where(s => s.WorkspaceId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.WorkspaceId, general), ct);
         await db.Prompts.Where(p => p.WorkspaceId == id)
+            .ExecuteUpdateAsync(p => p.SetProperty(x => x.WorkspaceId, general), ct);
+        // Projects are Restrict-FK'd to the workspace too — reassign them or the remove below throws.
+        await db.ScriptProjects.Where(p => p.WorkspaceId == id)
             .ExecuteUpdateAsync(p => p.SetProperty(x => x.WorkspaceId, general), ct);
         db.Workspaces.Remove(ws);
         await db.SaveChangesAsync(ct);

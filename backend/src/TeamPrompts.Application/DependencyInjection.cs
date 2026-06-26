@@ -13,10 +13,12 @@ public static class DependencyInjection
 
         services.AddScoped<IWorkspaceService, WorkspaceService>();
         services.AddScoped<IScriptService, ScriptService>();
+        services.AddScoped<IScriptProjectService, ScriptProjectService>();
         services.AddScoped<IPromptService, PromptService>();
         services.AddScoped<IGenerationService, GenerationService>();
         services.AddScoped<ICanvasService, CanvasService>();
         services.AddScoped<IGenerationExecutor, GenerationExecutor>();
+        services.AddScoped<IScriptVariantExecutor, ScriptVariantExecutor>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IActivityLogger, ActivityLogger>();
         services.AddScoped<IActivityService, ActivityService>();

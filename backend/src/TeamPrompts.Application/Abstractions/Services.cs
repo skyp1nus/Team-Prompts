@@ -28,12 +28,22 @@ public interface IUserDirectory
 public interface IJobScheduler
 {
     void EnqueueGeneration(Guid sessionId);
+
+    /// <summary>Enqueues background generation of one script-variant (a Variant <c>Script</c> row).</summary>
+    void EnqueueVariantGeneration(Guid scriptId);
 }
 
 /// <summary>Runs one session end-to-end: stream from OpenRouter, persist results, notify clients.</summary>
 public interface IGenerationExecutor
 {
     Task ExecuteAsync(Guid sessionId, CancellationToken ct = default);
+}
+
+/// <summary>Generates one script-variant: ONE OpenRouter completion, stored whole as the variant
+/// Script's ExtractedText (no option-splitting, unlike <see cref="IGenerationExecutor"/>).</summary>
+public interface IScriptVariantExecutor
+{
+    Task ExecuteAsync(Guid scriptId, CancellationToken ct = default);
 }
 
 /// <summary>Pushes generation progress to clients (SignalR in the API). Targets per-script + per-session groups.</summary>
