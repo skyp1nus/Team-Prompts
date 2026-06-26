@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TeamPrompts.Application.Dtos;
 using TeamPrompts.Application.Services;
+using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Api.Controllers;
 
@@ -10,10 +11,11 @@ namespace TeamPrompts.Api.Controllers;
 [Authorize]
 public sealed class ScriptsController(IScriptService scripts) : ControllerBase
 {
+    /// <summary><paramref name="kind"/> omitted → Original scripts only (variants stay under their project).</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ScriptListItemDto>>> List(
-        [FromQuery] Guid? workspaceId, [FromQuery] string? search, CancellationToken ct)
-        => Ok(await scripts.ListAsync(workspaceId, search, ct));
+        [FromQuery] Guid? workspaceId, [FromQuery] string? search, [FromQuery] ScriptKind? kind, CancellationToken ct)
+        => Ok(await scripts.ListAsync(workspaceId, search, kind, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ScriptDto>> Get(Guid id, CancellationToken ct)
