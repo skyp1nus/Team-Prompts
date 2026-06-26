@@ -128,7 +128,7 @@ export function CenterPanel() {
       <div className="flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-2.5 border-b border-border bg-background px-5 py-3">
         {/* left: highlights filter + clear the whole canvas. On the Map the highlights toggle lives in
             the canvas controls menu instead, so it isn't duplicated here. */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex flex-1 basis-0 items-center gap-2">
           {hasResults && view !== "map" && (
             <button
               onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
@@ -184,7 +184,7 @@ export function CenterPanel() {
             ))}
           </div>
         </div>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5">
+        <div className="flex flex-1 basis-0 items-center justify-end gap-2.5">
           <ModelPicker />
           <Button
             onClick={onGenerate}
