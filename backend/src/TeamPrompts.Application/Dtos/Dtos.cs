@@ -21,18 +21,38 @@ public sealed record UserDto(string Id, string Email, string DisplayName, IReadO
 // ---- Scripts ----
 public sealed record ScriptListItemDto(
     Guid Id, string Name, string OriginalFileName, FileType FileType,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, UserRef CreatedBy, int SessionCount);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, UserRef CreatedBy, int SessionCount,
+    Guid? ProjectId, ScriptKind Kind);
 
 public sealed record ScriptDto(
     Guid Id, string Name, string OriginalFileName, FileType FileType, string ExtractedText,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, UserRef CreatedBy);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, UserRef CreatedBy,
+    Guid? ProjectId, ScriptKind Kind, Guid? SourceScriptId, Guid? SourcePromptVersionId,
+    string? Model, SessionStatus? VariantStatus, string? VariantError);
 
 public sealed record UpdateScriptRequest(string Name);
+
+// ---- Script projects (a "folder": one source Script + its generated variants) ----
+public sealed record ScriptProjectListItemDto(
+    Guid Id, Guid WorkspaceId, string Name, Guid? OriginalScriptId, int SortOrder,
+    int VariantCount, UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record ScriptProjectDto(
+    Guid Id, Guid WorkspaceId, string Name, Guid? OriginalScriptId, int SortOrder,
+    ScriptDto? Original, IReadOnlyList<ScriptDto> Variants,
+    UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record UpdateScriptProjectRequest(string Name);
+
+/// <summary>Generate a new script-variant in a project. <c>PromptVersionId</c> null → the prompt's
+/// current main version. The prompt should be a <c>ScriptTransform</c> prompt (вижимка / rewrite).</summary>
+public sealed record CreateScriptVariantRequest(
+    Guid PromptId, Guid? PromptVersionId = null, string? Model = null, string? Name = null);
 
 // ---- Prompts & versions ----
 public sealed record PromptListItemDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind);
 
 public sealed record PromptVersionDto(
     Guid Id, Guid PromptId, Guid? ParentVersionId, string Content,
@@ -40,9 +60,9 @@ public sealed record PromptVersionDto(
 
 public sealed record PromptDetailDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions, PromptKind Kind);
 
-public sealed record CreatePromptRequest(Guid WorkspaceId, string Name, string Content);
+public sealed record CreatePromptRequest(Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.Metadata);
 public sealed record UpdatePromptRequest(string Name);
 
 /// <summary>Set the team-wide top-to-bottom order of a workspace's prompts. <c>OrderedIds</c> is the

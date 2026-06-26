@@ -10,7 +10,9 @@ namespace TeamPrompts.Application.Services;
 
 public interface IScriptService
 {
-    Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, CancellationToken ct = default);
+    /// <summary><paramref name="kind"/> null → Original scripts only (generated variants stay hidden
+    /// behind their project folder; the flat rail never lists them).</summary>
+    Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, ScriptKind? kind, CancellationToken ct = default);
     Task<ScriptDto?> GetAsync(Guid id, CancellationToken ct = default);
     Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default);
     Task<ScriptDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
@@ -25,11 +27,15 @@ public sealed class ScriptService(
     IUserDirectory users,
     IActivityLogger activity) : IScriptService
 {
-    public async Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, ScriptKind? kind, CancellationToken ct = default)
     {
         var q = db.Scripts.AsNoTracking();
         if (workspaceId is { } wsId)
             q = q.Where(s => s.WorkspaceId == wsId);
+        // Default to Original-only so generated variants never surface in the flat rail — they live
+        // under their project folder. An explicit kind override (e.g. Variant) is still honoured.
+        var wanted = kind ?? ScriptKind.Original;
+        q = q.Where(s => s.Kind == wanted);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
@@ -41,14 +47,14 @@ public sealed class ScriptService(
             .Select(s => new
             {
                 s.Id, s.Name, s.OriginalFileName, s.FileType, s.CreatedAt, s.UpdatedAt,
-                s.CreatedByUserId, SessionCount = s.Sessions.Count,
+                s.CreatedByUserId, SessionCount = s.Sessions.Count, s.ProjectId, s.Kind,
             })
             .ToListAsync(ct);
 
         var dir = await users.GetAsync(rows.Select(r => r.CreatedByUserId), ct);
         return rows.Select(r => new ScriptListItemDto(
             r.Id, r.Name, r.OriginalFileName, r.FileType, r.CreatedAt, r.UpdatedAt,
-            Attribution.Of(dir, r.CreatedByUserId), r.SessionCount)).ToList();
+            Attribution.Of(dir, r.CreatedByUserId), r.SessionCount, r.ProjectId, r.Kind)).ToList();
     }
 
     public async Task<ScriptDto?> GetAsync(Guid id, CancellationToken ct = default)
@@ -56,9 +62,14 @@ public sealed class ScriptService(
         var s = await db.Scripts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (s is null) return null;
         var dir = await users.GetAsync([s.CreatedByUserId], ct);
-        return new ScriptDto(s.Id, s.Name, s.OriginalFileName, s.FileType, s.ExtractedText,
-            s.CreatedAt, s.UpdatedAt, Attribution.Of(dir, s.CreatedByUserId));
+        return ToDto(s, dir);
     }
+
+    /// <summary>Maps a tracked/untracked Script to its DTO (shared by GetAsync + ScriptProjectService).</summary>
+    internal static ScriptDto ToDto(Script s, IReadOnlyDictionary<string, UserRef> dir) =>
+        new(s.Id, s.Name, s.OriginalFileName, s.FileType, s.ExtractedText, s.CreatedAt, s.UpdatedAt,
+            Attribution.Of(dir, s.CreatedByUserId), s.ProjectId, s.Kind, s.SourceScriptId,
+            s.SourcePromptVersionId, s.Model, s.VariantStatus, s.VariantError);
 
     public async Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default)
     {

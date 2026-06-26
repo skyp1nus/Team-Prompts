@@ -9,7 +9,7 @@ namespace TeamPrompts.Application.Services;
 
 public interface IPromptService
 {
-    Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, CancellationToken ct = default);
+    Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, PromptKind? kind, CancellationToken ct = default);
     Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default);
     Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default);
     Task<PromptDetailDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
@@ -25,9 +25,11 @@ public sealed class PromptService(
     IUserDirectory users,
     IActivityLogger activity) : IPromptService
 {
-    public async Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, PromptKind? kind, CancellationToken ct = default)
     {
         var q = db.Prompts.AsNoTracking();
+        if (kind is { } k)
+            q = q.Where(p => p.Kind == k);
 
         // SortOrder is only comparable *within* a workspace (each space is numbered 0..n on its own), so
         // it drives the order only for a scoped list. An unscoped (cross-workspace) list falls back to a
@@ -40,14 +42,14 @@ public sealed class PromptService(
             .Select(p => new
             {
                 p.Id, p.Name, p.MainVersionId, p.CreatedByUserId, p.CreatedAt, p.UpdatedAt,
-                VersionCount = p.Versions.Count,
+                VersionCount = p.Versions.Count, p.Kind,
             })
             .ToListAsync(ct);
 
         var dir = await users.GetAsync(rows.Select(r => r.CreatedByUserId), ct);
         return rows.Select(r => new PromptListItemDto(
             r.Id, r.Name, r.MainVersionId, Attribution.Of(dir, r.CreatedByUserId),
-            r.CreatedAt, r.UpdatedAt, r.VersionCount)).ToList();
+            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind)).ToList();
     }
 
     public async Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default)
@@ -69,7 +71,7 @@ public sealed class PromptService(
             .ToList();
 
         return new PromptDetailDto(prompt.Id, prompt.Name, prompt.MainVersionId,
-            Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions);
+            Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions, prompt.Kind);
     }
 
     public async Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default)
@@ -88,6 +90,7 @@ public sealed class PromptService(
         {
             WorkspaceId = req.WorkspaceId,
             Name = req.Name.Trim(),
+            Kind = req.Kind,
             CreatedByUserId = userId,
             SortOrder = minOrder - 1,
         };

@@ -42,6 +42,34 @@ public static class GenerationDefaults
         {script}
         </script>
         """;
+
+    /// <summary>
+    /// Always-on system message for script-variant generation: transform a SOURCE script into a new
+    /// full script (a condensed "вижимка", a rewrite, a tone shift) per the user's instruction. Unlike
+    /// metadata generation this returns ONE document, not a list of options.
+    /// </summary>
+    public static string ScriptTransformSystem() =>
+        """
+        You transform a source video script into a NEW script according to the user's instruction
+        (for example: condense it into a tight summary / "вижимка", rewrite it, or shift its tone).
+        Output rules:
+        - Return ONLY the resulting script text — no preamble, no commentary, no headings, no labels,
+          no surrounding quotes.
+        - Write it as a finished, ready-to-use script. Light structure (line breaks, short paragraphs)
+          is fine; add Markdown only if the instruction explicitly asks for it.
+        - Base it strictly on the source script. Do not invent facts that are absent from it.
+        """;
+
+    /// <summary>The source script to transform, delivered in the always-on system context so the
+    /// editable transform prompt stays a pure instruction.</summary>
+    public static string SourceScriptBlock(string script) =>
+        $"""
+        Here is the source video script to transform.
+
+        <script>
+        {script}
+        </script>
+        """;
 }
 
 /// <summary>Thrown when a referenced entity does not exist → mapped to HTTP 404.</summary>
