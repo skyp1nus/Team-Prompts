@@ -436,6 +436,13 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/PromptKind"
+            }
           }
         ],
         "responses": {
@@ -957,6 +964,454 @@
         }
       }
     },
+    "/api/script-projects": {
+      "get": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptProjectListItemDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptProjectListItemDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptProjectListItemDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "workspaceId": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "ContentType": {
+                        "type": "string"
+                      },
+                      "ContentDisposition": {
+                        "type": "string"
+                      },
+                      "Headers": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "Length": {
+                        "pattern": "^-?(?:0|[1-9]\\d*)$",
+                        "format": "int64"
+                      },
+                      "Name": {
+                        "type": "string"
+                      },
+                      "FileName": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/script-projects/{id}": {
+      "get": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScriptProjectRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScriptProjectRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScriptProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/script-projects/{id}/variants": {
+      "get": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScriptVariantRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScriptVariantRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScriptVariantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/script-projects/{id}/variants/{variantId}/promote": {
+      "post": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "variantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/script-projects/{id}/variants/{variantId}": {
+      "delete": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "variantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/scripts": {
       "get": {
         "tags": [
@@ -976,6 +1431,13 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ScriptKind"
             }
           }
         ],
@@ -2167,7 +2629,11 @@
           "GenerationRunDeleted",
           "ScriptGenerationsCleared",
           "ResultHighlighted",
-          "ResultUnhighlighted"
+          "ResultUnhighlighted",
+          "ScriptProjectCreated",
+          "ScriptProjectDeleted",
+          "ScriptVariantGenerated",
+          "ScriptVariantPromoted"
         ]
       },
       "ActivityFeedDto": {
@@ -2197,6 +2663,7 @@
           "GenerationSession",
           "GenerationResult",
           "User",
+          "ScriptProject",
           null
         ]
       },
@@ -2271,6 +2738,34 @@
           },
           "content": {
             "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PromptKind"
+          }
+        }
+      },
+      "CreateScriptVariantRequest": {
+        "required": [
+          "promptId"
+        ],
+        "type": "object",
+        "properties": {
+          "promptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "promptVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -2502,7 +2997,8 @@
           "createdBy",
           "createdAt",
           "updatedAt",
-          "versions"
+          "versions",
+          "kind"
         ],
         "type": "object",
         "properties": {
@@ -2534,8 +3030,17 @@
             "items": {
               "$ref": "#/components/schemas/PromptVersionDto"
             }
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PromptKind"
           }
         }
+      },
+      "PromptKind": {
+        "enum": [
+          "Metadata",
+          "ScriptTransform"
+        ]
       },
       "PromptListItemDto": {
         "required": [
@@ -2545,7 +3050,8 @@
           "createdBy",
           "createdAt",
           "updatedAt",
-          "versionCount"
+          "versionCount",
+          "kind"
         ],
         "type": "object",
         "properties": {
@@ -2575,6 +3081,9 @@
           "versionCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "format": "int32"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PromptKind"
           }
         }
       },
@@ -2693,7 +3202,14 @@
           "extractedText",
           "createdAt",
           "updatedAt",
-          "createdBy"
+          "createdBy",
+          "projectId",
+          "kind",
+          "sourceScriptId",
+          "sourcePromptVersionId",
+          "model",
+          "variantStatus",
+          "variantError"
         ],
         "type": "object",
         "properties": {
@@ -2723,8 +3239,50 @@
           },
           "createdBy": {
             "$ref": "#/components/schemas/UserRef"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ScriptKind"
+          },
+          "sourceScriptId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "sourcePromptVersionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "variantStatus": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/SessionStatus"
+              }
+            ]
+          },
+          "variantError": {
+            "type": "string",
+            "nullable": true
           }
         }
+      },
+      "ScriptKind": {
+        "enum": [
+          "Original",
+          "Variant"
+        ]
       },
       "ScriptListItemDto": {
         "required": [
@@ -2735,7 +3293,9 @@
           "createdAt",
           "updatedAt",
           "createdBy",
-          "sessionCount"
+          "sessionCount",
+          "projectId",
+          "kind"
         ],
         "type": "object",
         "properties": {
@@ -2766,6 +3326,129 @@
           "sessionCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "format": "int32"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ScriptKind"
+          }
+        }
+      },
+      "ScriptProjectDto": {
+        "required": [
+          "id",
+          "workspaceId",
+          "name",
+          "originalScriptId",
+          "sortOrder",
+          "original",
+          "variants",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "originalScriptId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "sortOrder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "original": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/ScriptDto"
+              }
+            ]
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScriptDto"
+            }
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ScriptProjectListItemDto": {
+        "required": [
+          "id",
+          "workspaceId",
+          "name",
+          "originalScriptId",
+          "sortOrder",
+          "variantCount",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "originalScriptId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "sortOrder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "variantCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -2974,6 +3657,17 @@
         }
       },
       "UpdatePromptRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateScriptProjectRequest": {
         "required": [
           "name"
         ],
@@ -3203,6 +3897,9 @@
     },
     {
       "name": "Results"
+    },
+    {
+      "name": "ScriptProjects"
     },
     {
       "name": "Scripts"

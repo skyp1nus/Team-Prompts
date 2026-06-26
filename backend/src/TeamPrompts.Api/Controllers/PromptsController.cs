@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TeamPrompts.Application.Dtos;
 using TeamPrompts.Application.Services;
+using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Api.Controllers;
 
@@ -10,10 +11,11 @@ namespace TeamPrompts.Api.Controllers;
 [Authorize]
 public sealed class PromptsController(IPromptService prompts) : ControllerBase
 {
+    /// <summary><paramref name="kind"/> filters the library (Metadata vs ScriptTransform); omitted → all.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PromptListItemDto>>> List(
-        [FromQuery] Guid? workspaceId, CancellationToken ct)
-        => Ok(await prompts.ListAsync(workspaceId, ct));
+        [FromQuery] Guid? workspaceId, [FromQuery] PromptKind? kind, CancellationToken ct)
+        => Ok(await prompts.ListAsync(workspaceId, kind, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PromptDetailDto>> Get(Guid id, CancellationToken ct)
