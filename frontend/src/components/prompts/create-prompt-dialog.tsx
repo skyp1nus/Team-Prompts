@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { usePostApiPrompts } from "@/api/endpoints/prompts/prompts";
+import { PromptKind } from "@/api/model";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -18,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Sheet,
   SheetClose,
@@ -34,6 +36,7 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
+  kind: z.enum([PromptKind.Metadata, PromptKind.ScriptTransform]),
   content: z.string().trim().min(1, "Prompt instructions are required"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -46,12 +49,19 @@ export function CreatePromptDialog() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", content: "" },
+    defaultValues: { name: "", kind: PromptKind.Metadata, content: "" },
   });
 
   const onSubmit = (values: FormValues) =>
     create.mutate(
-      { data: { workspaceId: activeWorkspaceId, name: values.name, content: values.content } },
+      {
+        data: {
+          workspaceId: activeWorkspaceId,
+          name: values.name,
+          content: values.content,
+          kind: values.kind,
+        },
+      },
       {
         onSuccess: async () => {
           await invalidatePath(qc, "/api/prompts");
@@ -101,6 +111,40 @@ export function CreatePromptDialog() {
                     <FormControl>
                       <Input placeholder="e.g. Shorts Hook Titles" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="kind"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type</FormLabel>
+                    <FormControl>
+                      <ToggleGroup
+                        value={[field.value]}
+                        onValueChange={(v) => {
+                          const next = (v as string[])[v.length - 1];
+                          if (next) field.onChange(next);
+                        }}
+                        variant="outline"
+                        spacing={0}
+                        className="w-full"
+                      >
+                        <ToggleGroupItem value={PromptKind.Metadata} className="flex-1">
+                          Metadata
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value={PromptKind.ScriptTransform} className="flex-1">
+                          Transform
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+                    </FormControl>
+                    <p className="text-[11px] text-faint">
+                      {field.value === PromptKind.ScriptTransform
+                        ? "Rewrites a script into a new alternative (summary, rewrite, tone shift)."
+                        : "Generates YouTube metadata — titles, descriptions, hooks, tags."}
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}

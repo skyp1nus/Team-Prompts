@@ -25,12 +25,13 @@ import {
   useGetApiPrompts,
   usePutApiPromptsReorder,
 } from "@/api/endpoints/prompts/prompts";
-import type { PromptListItemDto } from "@/api/model";
+import { PromptKind, type PromptListItemDto } from "@/api/model";
 import { CreatePromptDialog } from "@/components/prompts/create-prompt-dialog";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { invalidatePath } from "@/lib/query/invalidate";
@@ -53,11 +54,16 @@ export function PromptsPanel() {
   const del = useDeleteApiPromptsId();
   const reorder = usePutApiPromptsReorder();
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
+  const [kindFilter, setKindFilter] = useState<PromptKind | null>(null);
 
   // Self-heal a persisted selection: drop any prompt id that no longer exists.
   useEffect(() => {
     if (prompts) prunePrompts(prompts.map((p) => p.id));
   }, [prompts, prunePrompts]);
+
+  // Client-side filter for display only — onDragEnd still indexes into the full `prompts` list, so
+  // dragging within a filtered view persists a correct whole-workspace order.
+  const visible = kindFilter ? (prompts ?? []).filter((p) => p.kind === kindFilter) : prompts;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -132,25 +138,49 @@ export function PromptsPanel() {
           </Tooltip>
         </div>
       </div>
-      <div className="px-3.5 pb-2.5 text-[11px] text-faint">
+      <div className="px-3.5 pb-2 text-[11px] text-faint">
         {n === 0 ? "No prompts selected" : `${n} prompt${n === 1 ? "" : "s"} selected`}
+      </div>
+      <div className="px-3.5 pb-2.5">
+        <ToggleGroup
+          value={[kindFilter ?? "all"]}
+          onValueChange={(v) => {
+            const next = (v as string[])[v.length - 1];
+            if (!next) return;
+            setKindFilter(next === "all" ? null : (next as PromptKind));
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          className="w-full"
+        >
+          <ToggleGroupItem value="all" className="flex-1">
+            All
+          </ToggleGroupItem>
+          <ToggleGroupItem value={PromptKind.Metadata} className="flex-1">
+            Metadata
+          </ToggleGroupItem>
+          <ToggleGroupItem value={PromptKind.ScriptTransform} className="flex-1">
+            Transform
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <ScrollArea className="flex-1">
         <div className="px-2.5 pb-4">
           {isLoading &&
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1 h-[54px] w-full" />)}
-          {!isLoading && (prompts?.length ?? 0) === 0 && (
+          {!isLoading && (visible?.length ?? 0) === 0 && (
             <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
-              No prompts yet.
+              {kindFilter ? "No prompts of this type." : "No prompts yet."}
               <br />
-              Create one to begin.
+              {kindFilter ? "Switch the filter or create one." : "Create one to begin."}
             </p>
           )}
-          {prompts && prompts.length > 0 && (
+          {visible && visible.length > 0 && (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={prompts.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                {prompts.map((p) => (
+              <SortableContext items={visible.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {visible.map((p) => (
                   <PromptRow
                     key={p.id}
                     prompt={p}
@@ -244,9 +274,26 @@ function PromptRow({
             )
           )}
         </div>
-        <div className="mt-[3px] text-[11px] text-faint">
-          {pinnedVersion !== null ? `Using v${pinnedVersion} · ` : hasMain && "Main · "}
-          {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}
+        <div className="mt-[3px] flex items-center gap-1.5 text-[11px] text-faint">
+          {prompt.kind === PromptKind.ScriptTransform ? (
+            <span
+              title="Transforms a script into a new variant"
+              className="shrink-0 rounded-[5px] bg-ok/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-ok"
+            >
+              TRANSFORM
+            </span>
+          ) : (
+            <span
+              title="Generates YouTube metadata"
+              className="shrink-0 rounded-[5px] bg-accent px-1.5 py-px text-[9px] font-bold tracking-wide text-muted-foreground"
+            >
+              METADATA
+            </span>
+          )}
+          <span className="truncate">
+            {pinnedVersion !== null && `Using v${pinnedVersion} · `}
+            {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}
+          </span>
         </div>
       </div>
       <button
