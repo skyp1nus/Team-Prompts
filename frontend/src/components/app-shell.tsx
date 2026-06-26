@@ -10,6 +10,7 @@ import { usePostApiAuthLogout } from "@/api/endpoints/auth/auth";
 import { CollapsedRail } from "@/components/collapsed-rail";
 import { CenterPanel } from "@/components/generation/center-panel";
 import { PromptsPanel } from "@/components/prompts/prompts-panel";
+import { GlobalDropZone } from "@/components/scripts/global-drop-zone";
 import { ScriptsPanel } from "@/components/scripts/scripts-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -209,6 +210,8 @@ export function AppShell() {
           <CollapsedRail side="right" label="Prompts" onExpand={() => setPromptsPanelCollapsed(false)} />
         )}
       </div>
+
+      <GlobalDropZone />
     </div>
   );
 }
