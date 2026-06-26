@@ -1,3 +1,5 @@
+using TeamPrompts.Domain.Enums;
+
 namespace TeamPrompts.Domain.Entities;
 
 /// <summary>A reusable prompt in the team library. Has a Main version plus a tree of branches.</summary>
@@ -10,6 +12,10 @@ public class Prompt
     public Workspace? Workspace { get; set; }
 
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Whether this prompt produces YouTube metadata or transforms a source script into a
+    /// new alternative script (a вижимка). Scopes which library a prompt shows up in.</summary>
+    public PromptKind Kind { get; set; } = PromptKind.Metadata;
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

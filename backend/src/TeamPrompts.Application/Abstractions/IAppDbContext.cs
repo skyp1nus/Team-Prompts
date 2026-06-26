@@ -11,6 +11,7 @@ public interface IAppDbContext
     DatabaseFacade Database { get; }
 
     DbSet<Workspace> Workspaces { get; }
+    DbSet<ScriptProject> ScriptProjects { get; }
     DbSet<Script> Scripts { get; }
     DbSet<Prompt> Prompts { get; }
     DbSet<PromptVersion> PromptVersions { get; }
