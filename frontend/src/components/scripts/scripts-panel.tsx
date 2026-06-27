@@ -126,8 +126,7 @@ export function ScriptsPanel() {
 
 function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDto; expanded: boolean }) {
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
-    useWorkspace();
+  const { activeScriptId, setActiveScriptId, batchScriptIds, setProjectExpanded } = useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
   const [genOpen, setGenOpen] = useState(false);
 
@@ -220,10 +219,6 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
               isSource
               active={original.id === activeScriptId}
               selected={batchScriptIds.includes(original.id)}
-              onOpen={() => {
-                toggleBatchScript(original.id);
-                setActiveScriptId(original.id);
-              }}
             />
           )}
           {/* Variants are generated FROM the source — nest them under it as a tree so the lineage is obvious. */}
@@ -245,10 +240,6 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
                     script={v}
                     active={v.id === activeScriptId}
                     selected={batchScriptIds.includes(v.id)}
-                    onOpen={() => {
-                      toggleBatchScript(v.id);
-                      setActiveScriptId(v.id);
-                    }}
                     projectId={project.id}
                   />
                 </div>
@@ -327,7 +318,6 @@ function ScriptLeaf({
   isSource,
   active,
   selected,
-  onOpen,
   projectId,
 }: {
   script: ScriptDto;
@@ -335,7 +325,6 @@ function ScriptLeaf({
   isSource?: boolean;
   active: boolean;
   selected: boolean;
-  onOpen: () => void;
   /** Set for variant leaves → enables delete. Omitted for the source. */
   projectId?: string;
 }) {
@@ -369,20 +358,28 @@ function ScriptLeaf({
 
   return (
     <div
-      onClick={onOpen}
+      onClick={() => setActiveScriptId(script.id)}
       className={cn(
         "group/leaf relative my-[2px] flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1.5 pl-2 transition-colors hover:bg-accent",
         active && "bg-primary/[0.07]",
       )}
     >
-      <span
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={selected ? "Remove from batch" : "Add to batch"}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleBatchScript(script.id);
+        }}
         className={cn(
           "flex size-[18px] shrink-0 items-center justify-center rounded border-[1.5px] text-[10px] transition-colors",
           selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
         )}
       >
         {selected && <Check className="size-2.5" />}
-      </span>
+      </button>
 
       <span
         className={cn(
