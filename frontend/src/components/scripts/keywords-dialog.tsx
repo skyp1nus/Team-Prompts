@@ -1,12 +1,11 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRound, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { KeyRound } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { usePutApiScriptProjectsIdKeywords } from "@/api/endpoints/script-projects/script-projects";
 import type { ScriptDto } from "@/api/model";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { invalidatePath } from "@/lib/query/invalidate";
 
 /** Split free text (newline- or comma-separated) into a clean, de-duplicated keyword list. */
@@ -33,7 +33,7 @@ function parseKeywords(raw: string): string[] {
 }
 
 /**
- * Edit a project's keyword list as removable chips — the per-project SEO terms keyword-aware prompts
+ * Edit a project's keyword list as plain text — the per-project SEO terms keyword-aware prompts
  * inject into their generations. One keyword Script per project; empty clears it. Saving lazily
  * creates it for legacy projects that predate the feature.
  */
@@ -67,7 +67,7 @@ export function KeywordsDialog({
           </div>
         </DialogHeader>
 
-        {/* Mounted only while open so the editor seeds its chips from the latest server text on each open. */}
+        {/* Mounted only while open so the editor seeds its text from the latest server value on each open. */}
         {open && (
           <KeywordsEditor
             projectId={projectId}
@@ -91,46 +91,17 @@ function KeywordsEditor({
 }) {
   const qc = useQueryClient();
   const save = usePutApiScriptProjectsIdKeywords();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [tags, setTags] = useState<string[]>(() => parseKeywords(initial));
-  const [draft, setDraft] = useState("");
+  // The saved keyword text, shown in full and edited directly.
+  const [text, setText] = useState(initial);
 
-  const addTokens = (raw: string) => {
-    const incoming = parseKeywords(raw);
-    if (incoming.length === 0) return;
-    setTags((prev) => {
-      const seen = new Set(prev.map((t) => t.toLowerCase()));
-      return [...prev, ...incoming.filter((t) => !seen.has(t.toLowerCase()))];
-    });
-    setDraft("");
-  };
-
-  const removeAt = (i: number) => setTags((prev) => prev.filter((_, idx) => idx !== i));
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTokens(draft);
-    } else if (e.key === "Backspace" && draft.length === 0 && tags.length > 0) {
-      e.preventDefault();
-      removeAt(tags.length - 1);
-    }
-  };
-
-  const onPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text");
-    if (/[\n,]/.test(text)) {
-      e.preventDefault();
-      addTokens(`${draft},${text}`);
-    }
-  };
+  const count = parseKeywords(text).length;
+  // Compare the normalized form so reformatting whitespace alone doesn't count as a change.
+  const normalized = parseKeywords(text).join("\n");
+  const dirty = normalized !== parseKeywords(initial).join("\n");
 
   const onSave = () => {
-    // Fold any half-typed draft into the list before saving.
-    const seen = new Set(tags.map((t) => t.toLowerCase()));
-    const final = [...tags, ...parseKeywords(draft).filter((t) => !seen.has(t.toLowerCase()))];
     save.mutate(
-      { id: projectId, data: { content: final.join("\n") } },
+      { id: projectId, data: { content: normalized } },
       {
         onSuccess: async () => {
           await invalidatePath(qc, "/api/script-projects");
@@ -145,42 +116,16 @@ function KeywordsEditor({
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        {/* Chips field: looks like an input, focuses the inline editor on click. */}
-        <div
-          onClick={() => inputRef.current?.focus()}
-          className="flex max-h-[280px] min-h-[132px] flex-wrap content-start gap-1.5 overflow-y-auto rounded-lg border border-border bg-transparent p-2.5 transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30"
-        >
-          {tags.map((t, i) => (
-            <Badge key={`${t}-${i}`} variant="secondary" className="h-6 gap-1 pr-1 pl-2 text-[12px] font-normal">
-              <span className="max-w-[220px] truncate">{t}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${t}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeAt(i);
-                }}
-                className="flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            onBlur={() => addTokens(draft)}
-            placeholder={tags.length === 0 ? "Type a keyword, press Enter…" : ""}
-            autoFocus
-            className="h-6 min-w-[140px] flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
-          />
-        </div>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          autoFocus
+          placeholder="One keyword per line…"
+          className="max-h-[340px] min-h-[180px] resize-none text-[13px] leading-relaxed"
+        />
         <p className="mt-2 flex items-center justify-between text-[11px] leading-relaxed text-faint">
-          <span>Press Enter or comma to add · Backspace to remove the last.</span>
-          <span className="shrink-0 tabular-nums">{tags.length}</span>
+          <span>One keyword per line or comma-separated.</span>
+          <span className="shrink-0 tabular-nums">{count}</span>
         </p>
       </div>
 
@@ -188,7 +133,7 @@ function KeywordsEditor({
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="button" onClick={onSave} disabled={save.isPending}>
+        <Button type="button" onClick={onSave} disabled={save.isPending || !dirty}>
           {save.isPending ? "Saving…" : "Save keywords"}
         </Button>
       </div>
