@@ -69,9 +69,11 @@ export function CenterPanel() {
     if (activeScriptId) subscribeScript(activeScriptId);
   }, [activeScriptId, subscribeScript]);
 
-  const scriptIds = batchScriptIds.length > 0 ? batchScriptIds : activeScriptId ? [activeScriptId] : [];
+  // Generation targets ONLY checkbox-selected scripts — never the merely-viewed active script.
+  // Switching scripts to browse must not arm Generate.
+  const scriptIds = batchScriptIds;
   const missing = [
-    scriptIds.length === 0 && "a script",
+    scriptIds.length === 0 && "a script (check one on the left)",
     selectedPromptIds.length === 0 && "a prompt",
     runModels.length === 0 && "a model",
   ].filter(Boolean) as string[];
