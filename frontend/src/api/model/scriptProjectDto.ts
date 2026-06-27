@@ -16,8 +16,8 @@ export interface ScriptProjectDto {
   sortOrder: number;
   original: unknown | null | ScriptDto;
   variants: ScriptDto[];
+  keywords: unknown | null | ScriptDto;
   createdBy: UserRef;
   createdAt: string;
   updatedAt: string;
-  keywords: unknown | null | ScriptDto;
 }

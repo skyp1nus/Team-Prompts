@@ -13,7 +13,9 @@ function restoreMissingTypes(node: any): void {
   }
   if (node && typeof node === "object") {
     if (node.type == null) {
-      if (node.format === "int32" || node.format === "int64") {
+      // .NET emits unsigned ints (e.g. the xmin concurrency token) as uint32/uint64 with a string
+      // `pattern` and no `type`; at runtime they serialize as JSON numbers, so treat them as integers.
+      if (["int32", "int64", "uint32", "uint64"].includes(node.format)) {
         node.type = "integer";
         delete node.pattern;
       } else if (Array.isArray(node.enum) && node.enum.every((v: unknown) => typeof v === "string")) {

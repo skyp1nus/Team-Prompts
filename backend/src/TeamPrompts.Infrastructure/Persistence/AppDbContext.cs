@@ -86,6 +86,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
                 .WithMany()
                 .HasForeignKey(x => x.SourceScriptId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            // Optimistic concurrency via PostgreSQL's xmin system column (Npgsql maps a uint rowversion
+            // onto it — no real column is created). Guards against lost updates, chiefly the keyword
+            // editor where a stale Save would clobber a concurrent edit. Existing single-writer flows
+            // (the variant pipeline) reload fresh and save in one context, so they're unaffected.
+            e.Property(x => x.Version).IsRowVersion();
         });
 
         b.Entity<Prompt>(e =>

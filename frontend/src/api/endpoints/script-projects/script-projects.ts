@@ -427,6 +427,64 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getDeleteApiScriptProjectsIdMutationOptions(options), queryClient);
     }
+    export const putApiScriptProjectsIdKeywords = (
+    id: string,
+    updateProjectKeywordsRequest: BodyType<UpdateProjectKeywordsRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<ScriptProjectDto>(
+      {url: `/api/script-projects/${id}/keywords`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: updateProjectKeywordsRequest, signal
+    },
+      options);
+    }
+
+
+
+export const getPutApiScriptProjectsIdKeywordsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext> => {
+
+const mutationKey = ['putApiScriptProjectsIdKeywords'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, {id: string;data: BodyType<UpdateProjectKeywordsRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  putApiScriptProjectsIdKeywords(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutApiScriptProjectsIdKeywordsMutationResult = NonNullable<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>>
+    export type PutApiScriptProjectsIdKeywordsMutationBody = BodyType<UpdateProjectKeywordsRequest>
+    export type PutApiScriptProjectsIdKeywordsMutationError = ErrorType<unknown>
+
+    export const usePutApiScriptProjectsIdKeywords = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>,
+        TError,
+        {id: string;data: BodyType<UpdateProjectKeywordsRequest>},
+        TContext
+      > => {
+      return useMutation(getPutApiScriptProjectsIdKeywordsMutationOptions(options), queryClient);
+    }
     export const getApiScriptProjectsIdVariants = (
     id: string,
  options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
@@ -682,62 +740,4 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDeleteApiScriptProjectsIdVariantsVariantIdMutationOptions(options), queryClient);
-    }
-    export const putApiScriptProjectsIdKeywords = (
-    id: string,
-    updateProjectKeywordsRequest: BodyType<UpdateProjectKeywordsRequest>,
- options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
-) => {
-
-
-      return customInstance<ScriptProjectDto>(
-      {url: `/api/script-projects/${id}/keywords`, method: 'PUT',
-      headers: {'Content-Type': 'application/json', },
-      data: updateProjectKeywordsRequest, signal
-    },
-      options);
-    }
-
-
-
-export const getPutApiScriptProjectsIdKeywordsMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext> => {
-
-const mutationKey = ['putApiScriptProjectsIdKeywords'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, {id: string;data: BodyType<UpdateProjectKeywordsRequest>}> = (props) => {
-          const {id,data} = props ?? {};
-
-          return  putApiScriptProjectsIdKeywords(id,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PutApiScriptProjectsIdKeywordsMutationResult = NonNullable<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>>
-    export type PutApiScriptProjectsIdKeywordsMutationBody = BodyType<UpdateProjectKeywordsRequest>
-    export type PutApiScriptProjectsIdKeywordsMutationError = ErrorType<unknown>
-
-    export const usePutApiScriptProjectsIdKeywords = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>, TError,{id: string;data: BodyType<UpdateProjectKeywordsRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof putApiScriptProjectsIdKeywords>>,
-        TError,
-        {id: string;data: BodyType<UpdateProjectKeywordsRequest>},
-        TContext
-      > => {
-      return useMutation(getPutApiScriptProjectsIdKeywordsMutationOptions(options), queryClient);
     }

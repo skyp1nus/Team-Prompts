@@ -30,4 +30,5 @@ export interface ScriptDto {
   variantStatus: unknown | null | SessionStatus;
   /** @nullable */
   variantError: string | null;
+  version: number;
 }

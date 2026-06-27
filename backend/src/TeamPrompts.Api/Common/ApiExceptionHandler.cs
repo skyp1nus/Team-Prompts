@@ -27,6 +27,9 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, I
             AppValidationException => (StatusCodes.Status400BadRequest, ex.Message),
             FluentValidation.ValidationException => (StatusCodes.Status400BadRequest, ex.Message),
             InvalidOperationException => (StatusCodes.Status400BadRequest, ex.Message),
+            // A stale write was rejected by an optimistic-concurrency token (e.g. keyword editor) — the
+            // client carried a version that no longer matches the stored row.
+            ConflictException => (StatusCodes.Status409Conflict, ex.Message),
             // A concurrent write lost a unique-index race — retryable, not a server fault.
             DbUpdateException => (StatusCodes.Status409Conflict, "The change conflicted with a concurrent update — please retry."),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred."),

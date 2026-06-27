@@ -54,5 +54,11 @@ public class Script
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
+    /// <summary>PostgreSQL <c>xmin</c> system column, mapped as an optimistic-concurrency token (see the
+    /// Script config in AppDbContext). Bumps on every UPDATE; the frontend echoes the value it last loaded
+    /// back on save so a stale edit (e.g. a teammate saved the keywords meanwhile) is rejected with 409
+    /// instead of silently overwriting.</summary>
+    public uint Version { get; set; }
+
     public ICollection<GenerationSession> Sessions { get; set; } = new List<GenerationSession>();
 }
