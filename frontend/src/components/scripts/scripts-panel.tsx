@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Eye, Folder, Loader2, PanelLeftClose, Search, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, Eye, Folder, Loader2, MoreHorizontal, PanelLeftClose, Search, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,12 @@ import { ScriptViewerDialog } from "@/components/scripts/script-viewer-dialog";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -122,6 +128,7 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
   const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
     useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
+  const [genOpen, setGenOpen] = useState(false);
 
   const { data: detail, isLoading } = useGetApiScriptProjectsId(project.id, {
     query: {
@@ -169,27 +176,38 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
           <Folder className="size-[18px] shrink-0 text-primary/80" />
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
         </CollapsibleTrigger>
-        <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
-          <GenerateVariantDialog
-            projectId={project.id}
-            trigger={
-              <button
-                className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-60 transition-colors group-hover:opacity-100 hover:bg-card hover:text-primary"
-                title="Generate variant"
+        <div className="flex shrink-0 items-center pr-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  aria-label="Project actions"
+                  title="More"
+                  className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
+                >
+                  <MoreHorizontal className="size-4" />
+                </button>
+              }
+            />
+            <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
+              <DropdownMenuItem onClick={() => setGenOpen(true)} className="whitespace-nowrap px-2 py-1.5">
+                <Sparkles />
+                Generate variant
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={onDeleteProject}
+                className="whitespace-nowrap px-2 py-1.5"
               >
-                <Sparkles className="size-3.5" />
-              </button>
-            }
-          />
-          <button
-            onClick={onDeleteProject}
-            className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
-            title="Delete project"
-          >
-            <X className="size-3.5" />
-          </button>
+                <X />
+                Delete project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      <GenerateVariantDialog projectId={project.id} open={genOpen} onOpenChange={setGenOpen} />
 
       <CollapsibleContent>
         <div className="ml-[18px] border-l border-border pl-2">
