@@ -5,8 +5,6 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface UpdatePromptRequest {
-  name: string;
-  /** @nullable */
-  useKeywords?: boolean | null;
+export interface UpdateProjectKeywordsRequest {
+  content: string;
 }

@@ -290,6 +290,14 @@ function PromptRow({
               METADATA
             </span>
           )}
+          {prompt.useKeywords && (
+            <span
+              title="Injects the active project's keywords into every run"
+              className="shrink-0 rounded-[5px] bg-amber-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-amber-600 dark:text-amber-400"
+            >
+              KEYWORDS
+            </span>
+          )}
           <span className="truncate">
             {pinnedVersion !== null && `Using v${pinnedVersion} · `}
             {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}

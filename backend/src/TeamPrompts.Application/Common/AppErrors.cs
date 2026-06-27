@@ -60,6 +60,21 @@ public static class GenerationDefaults
         - Base it strictly on the source script. Do not invent facts that are absent from it.
         """;
 
+    /// <summary>
+    /// The project's keyword/SEO terms, delivered in the always-on system context for keyword-aware
+    /// prompts (UseKeywords=true) that don't place a <c>{{keywords}}</c> token themselves. Guidance,
+    /// not a hard list — the model weaves them in where they fit naturally.
+    /// </summary>
+    public static string KeywordsBlock(string keywords) =>
+        $"""
+        Naturally weave in the following project keywords / SEO terms where they fit. Prioritise these
+        topics and phrasings, but never force them or list them verbatim if it hurts readability.
+
+        <keywords>
+        {keywords}
+        </keywords>
+        """;
+
     /// <summary>The source script to transform, delivered in the always-on system context so the
     /// editable transform prompt stays a pure instruction.</summary>
     public static string SourceScriptBlock(string script) =>

@@ -28,9 +28,10 @@ public sealed class PromptsController(IPromptService prompts) : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = dto.Id }, dto);
     }
 
+    /// <summary>Rename a prompt and/or toggle its keyword usage (<c>UseKeywords</c> null leaves it as-is).</summary>
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<PromptDetailDto>> Rename(Guid id, UpdatePromptRequest req, CancellationToken ct)
-        => Ok(await prompts.RenameAsync(id, req.Name, ct));
+    public async Task<ActionResult<PromptDetailDto>> Update(Guid id, UpdatePromptRequest req, CancellationToken ct)
+        => Ok(await prompts.UpdateAsync(id, req, ct));
 
     /// <summary>Set the team-wide top-to-bottom order of a workspace's prompts (drives the map layout).</summary>
     [HttpPut("reorder")]

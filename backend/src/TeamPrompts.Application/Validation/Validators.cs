@@ -30,6 +30,12 @@ public sealed class UpdateScriptRequestValidator : AbstractValidator<UpdateScrip
     public UpdateScriptRequestValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
 }
 
+public sealed class UpdateProjectKeywordsRequestValidator : AbstractValidator<UpdateProjectKeywordsRequest>
+{
+    // Empty is allowed (clears the list); cap the size so the keyword block can't bloat a prompt.
+    public UpdateProjectKeywordsRequestValidator() => RuleFor(x => x.Content).NotNull().MaximumLength(20_000);
+}
+
 public sealed class CreateWorkspaceRequestValidator : AbstractValidator<CreateWorkspaceRequest>
 {
     public CreateWorkspaceRequestValidator()

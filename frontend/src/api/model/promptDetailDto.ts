@@ -18,4 +18,5 @@ export interface PromptDetailDto {
   updatedAt: string;
   versions: PromptVersionDto[];
   kind: PromptKind;
+  useKeywords: boolean;
 }

@@ -19,6 +19,10 @@ public interface IScriptProjectService
     Task<ScriptProjectDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>Set the project's keyword list. Creates the keyword Script lazily for legacy projects
+    /// that predate the feature.</summary>
+    Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, CancellationToken ct = default);
+
     Task<IReadOnlyList<ScriptDto>> ListVariantsAsync(Guid projectId, CancellationToken ct = default);
 
     /// <summary>Queue generation of one new script-variant from the project's source script.</summary>
@@ -134,9 +138,24 @@ public sealed class ScriptProjectService(
             StorageKey = key,
             CreatedByUserId = userId,
         };
+        // Every project ships with an editable, initially-empty keyword list. Keyword-aware prompts
+        // (UseKeywords=true) inject this into their generations; the team fills it in per project.
+        var keywords = new Script
+        {
+            WorkspaceId = workspaceId,
+            ProjectId = project.Id,
+            Kind = ScriptKind.Keywords,
+            Name = "Keywords",
+            OriginalFileName = string.Empty,
+            FileType = FileType.Txt,
+            ExtractedText = string.Empty,
+            StorageKey = null,
+            CreatedByUserId = userId,
+        };
         project.OriginalScriptId = original.Id;
         db.ScriptProjects.Add(project);
         db.Scripts.Add(original);
+        db.Scripts.Add(keywords);
         await db.SaveChangesAsync(ct);
 
         await activity.LogAsync(new ActivityLogEntry(
@@ -156,6 +175,39 @@ public sealed class ScriptProjectService(
         return (await GetAsync(id, ct))!;
     }
 
+    public async Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, CancellationToken ct = default)
+    {
+        var project = await db.ScriptProjects.FirstOrDefaultAsync(p => p.Id == projectId, ct)
+                      ?? throw new NotFoundException("Project not found.");
+
+        var keywords = await db.Scripts
+            .FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Kind == ScriptKind.Keywords, ct);
+        if (keywords is null)
+        {
+            // Legacy project (created before keywords existed): materialise its keyword Script now.
+            keywords = new Script
+            {
+                WorkspaceId = project.WorkspaceId,
+                ProjectId = projectId,
+                Kind = ScriptKind.Keywords,
+                Name = "Keywords",
+                OriginalFileName = string.Empty,
+                FileType = FileType.Txt,
+                ExtractedText = content,
+                StorageKey = null,
+                CreatedByUserId = currentUser.UserId ?? string.Empty,
+            };
+            db.Scripts.Add(keywords);
+        }
+        else
+        {
+            keywords.ExtractedText = content;
+        }
+        await db.SaveChangesAsync(ct);
+
+        return (await GetAsync(projectId, ct))!;
+    }
+
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var project = await db.ScriptProjects
@@ -166,13 +218,15 @@ public sealed class ScriptProjectService(
         var name = project.Name;
         var variants = project.Scripts.Where(s => s.Kind == ScriptKind.Variant).ToList();
         var originals = project.Scripts.Where(s => s.Kind == ScriptKind.Original).ToList();
+        // Generated variants and the keyword list are project-only artefacts → delete them with the
+        // project (variants cascade their sessions/canvas; keywords have none).
+        var artifacts = project.Scripts.Where(s => s.Kind != ScriptKind.Original).ToList();
 
-        // Generated variants are project-only artefacts → delete them (cascades their sessions/canvas).
         // The uploaded Original is kept but detached (ProjectId nulled) so the source file isn't lost
         // (its blob stays referenced). Commit as one unit so a mid-way failure can't half-delete.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (variants.Count > 0)
-            db.Scripts.RemoveRange(variants);
+        if (artifacts.Count > 0)
+            db.Scripts.RemoveRange(artifacts);
         foreach (var o in originals)
             o.ProjectId = null;
         await db.SaveChangesAsync(ct);
@@ -311,9 +365,11 @@ public sealed class ScriptProjectService(
             .OrderByDescending(s => s.CreatedAt)
             .Select(s => ScriptService.ToDto(s, dir))
             .ToList();
+        var keywords = all.FirstOrDefault(s => s.Kind == ScriptKind.Keywords);
         return new ScriptProjectDto(
             project.Id, project.WorkspaceId, project.Name, project.OriginalScriptId, project.SortOrder,
             original is null ? null : ScriptService.ToDto(original, dir), variants,
+            keywords is null ? null : ScriptService.ToDto(keywords, dir),
             Attribution.Of(dir, project.CreatedByUserId), project.CreatedAt, project.UpdatedAt);
     }
 }

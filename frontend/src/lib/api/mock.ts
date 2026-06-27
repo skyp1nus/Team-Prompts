@@ -103,6 +103,7 @@ type ScriptProjectRec = {
   updatedAt: string;
   original: ScriptDto;
   variants: ScriptDto[];
+  keywords?: ScriptDto | null;
 };
 
 /** Build a full ScriptDto (mock) with all the project/variant fields the rail reads. */
@@ -372,6 +373,7 @@ function prompt(
     createdAt: iso(17),
     updatedAt: iso(1),
     versions,
+    useKeywords: false,
   };
 }
 
@@ -417,6 +419,7 @@ function listItem(p: PromptRec): PromptListItemDto {
     updatedAt: p.updatedAt,
     versionCount: p.versions.length,
     kind: p.kind,
+    useKeywords: p.useKeywords,
   };
 }
 
@@ -443,6 +446,7 @@ function projectDto(p: ScriptProjectRec): ScriptProjectDto {
     sortOrder: p.sortOrder,
     original: p.original,
     variants: p.variants,
+    keywords: p.keywords ?? null,
     createdBy: p.createdBy,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -619,6 +623,20 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
     pr.updatedAt = iso(0);
     return reply<ScriptDto>(variant, 250);
   }
+  mm = m(/^\/api\/script-projects\/([^/]+)\/keywords$/);
+  if (mm && method === "PUT") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (pr) {
+      pr.keywords = scriptDtoFull({
+        id: pr.keywords?.id ?? uid("kw"),
+        name: "Keywords",
+        kind: "Keywords",
+        projectId: pr.id,
+        extractedText: String(body.content ?? ""),
+      });
+    }
+    return reply(pr ? projectDto(pr) : {}, 150);
+  }
   mm = m(/^\/api\/script-projects\/([^/]+)$/);
   if (mm && method === "GET") {
     const pr = store.projects.find((x) => x.id === mm![1]);
@@ -657,6 +675,7 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
       createdAt: iso(0),
       updatedAt: iso(0),
       versions: [version(id, vId, null, "Mara A.", 0, "Created prompt", String(body.content ?? ""), true)],
+      useKeywords: Boolean(body.useKeywords),
     };
     store.prompts.push(rec);
     return reply(listItem(rec), 200);

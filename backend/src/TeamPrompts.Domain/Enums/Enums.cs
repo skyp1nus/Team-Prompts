@@ -9,12 +9,17 @@ public enum FileType
     Txt = 1,
 }
 
-/// <summary>Whether a Script is the uploaded source (Original) or an AI-generated alternative (Variant).</summary>
+/// <summary>Whether a Script is the uploaded source (Original), an AI-generated alternative (Variant),
+/// or the project's editable keyword list (Keywords) used by keyword-aware prompts.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ScriptKind
 {
     Original = 0,
     Variant = 1,
+
+    /// <summary>The per-project keyword/SEO-term list. One per project, created empty on upload,
+    /// edited by the team, and injected into generations whose prompt has UseKeywords=true.</summary>
+    Keywords = 2,
 }
 
 /// <summary>Whether a Prompt generates YouTube metadata or transforms a script into a new variant.</summary>
