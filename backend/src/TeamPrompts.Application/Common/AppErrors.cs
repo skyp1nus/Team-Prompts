@@ -95,3 +95,6 @@ public sealed class ForbiddenException(string message) : Exception(message);
 
 /// <summary>Thrown for invalid operations / bad state → mapped to HTTP 400.</summary>
 public sealed class AppValidationException(string message) : Exception(message);
+
+/// <summary>Thrown when a write conflicts with a concurrent change (optimistic concurrency) → mapped to HTTP 409.</summary>
+public sealed class ConflictException(string message) : Exception(message);

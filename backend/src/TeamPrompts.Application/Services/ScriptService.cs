@@ -69,7 +69,7 @@ public sealed class ScriptService(
     internal static ScriptDto ToDto(Script s, IReadOnlyDictionary<string, UserRef> dir) =>
         new(s.Id, s.Name, s.OriginalFileName, s.FileType, s.ExtractedText, s.CreatedAt, s.UpdatedAt,
             Attribution.Of(dir, s.CreatedByUserId), s.ProjectId, s.Kind, s.SourceScriptId,
-            s.SourcePromptVersionId, s.Model, s.VariantStatus, s.VariantError);
+            s.SourcePromptVersionId, s.Model, s.VariantStatus, s.VariantError, s.Version);
 
     public async Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default)
     {

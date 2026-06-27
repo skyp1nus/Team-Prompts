@@ -124,6 +124,7 @@ function scriptDtoFull(o: Partial<ScriptDto> & { id: string; name: string }): Sc
     model: o.model ?? null,
     variantStatus: o.variantStatus ?? null,
     variantError: o.variantError ?? null,
+    version: o.version ?? 1,
   };
 }
 

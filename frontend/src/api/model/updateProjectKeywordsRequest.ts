@@ -7,4 +7,6 @@
 
 export interface UpdateProjectKeywordsRequest {
   content: string;
+  /** @nullable */
+  expectedVersion?: number | null;
 }

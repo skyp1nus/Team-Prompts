@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,25 +18,19 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { invalidatePath } from "@/lib/query/invalidate";
 
-/** Split free text (newline- or comma-separated) into a clean, de-duplicated keyword list. */
-function parseKeywords(raw: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of raw.split(/[\n,]/)) {
-    const k = part.trim();
-    if (!k) continue;
-    const key = k.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(k);
-  }
-  return out;
+/** Non-empty, trimmed keyword lines — one keyword per line, blank lines dropped. */
+function cleanLines(raw: string): string[] {
+  return raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 /**
  * Edit a project's keyword list as plain text — the per-project SEO terms keyword-aware prompts
  * inject into their generations. One keyword Script per project; empty clears it. Saving lazily
- * creates it for legacy projects that predate the feature.
+ * creates it for legacy projects that predate the feature, and carries the keyword Script's
+ * concurrency version so a stale save can't silently overwrite a teammate's edit.
  */
 export function KeywordsDialog({
   projectId,
@@ -67,11 +62,13 @@ export function KeywordsDialog({
           </div>
         </DialogHeader>
 
-        {/* Mounted only while open so the editor seeds its text from the latest server value on each open. */}
+        {/* Mounted only while open so the editor seeds its text + version from the latest server value
+            on each open. */}
         {open && (
           <KeywordsEditor
             projectId={projectId}
             initial={keywords?.extractedText ?? ""}
+            initialVersion={keywords?.version}
             onClose={() => onOpenChange(false)}
           />
         )}
@@ -83,10 +80,13 @@ export function KeywordsDialog({
 function KeywordsEditor({
   projectId,
   initial,
+  initialVersion,
   onClose,
 }: {
   projectId: string;
   initial: string;
+  /** The keyword Script's concurrency version when this editor opened; undefined for a not-yet-created list. */
+  initialVersion?: number;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -94,21 +94,31 @@ function KeywordsEditor({
   // The saved keyword text, shown in full and edited directly.
   const [text, setText] = useState(initial);
 
-  const count = parseKeywords(text).length;
-  // Compare the normalized form so reformatting whitespace alone doesn't count as a change.
-  const normalized = parseKeywords(text).join("\n");
-  const dirty = normalized !== parseKeywords(initial).join("\n");
+  const count = cleanLines(text).length;
+  // Raw compare: any edit arms Save; reopening an untouched (even messy) value leaves it disabled.
+  const dirty = text !== initial;
 
   const onSave = () => {
     save.mutate(
-      { id: projectId, data: { content: normalized } },
+      { id: projectId, data: { content: cleanLines(text).join("\n"), expectedVersion: initialVersion } },
       {
         onSuccess: async () => {
           await invalidatePath(qc, "/api/script-projects");
           toast.success("Keywords saved");
           onClose();
         },
-        onError: () => toast.error("Could not save keywords"),
+        onError: async (err) => {
+          // 409 = someone saved newer keywords while this dialog was open. Don't clobber them —
+          // refresh the underlying data and close so reopening shows the latest to reapply onto.
+          if ((err as AxiosError)?.response?.status === 409) {
+            const detail = ((err as AxiosError)?.response?.data as { detail?: string } | undefined)?.detail;
+            toast.error(detail ?? "These keywords were changed by someone else. Reopen to see the latest.");
+            await invalidatePath(qc, "/api/script-projects");
+            onClose();
+            return;
+          }
+          toast.error("Could not save keywords");
+        },
       },
     );
   };
@@ -124,7 +134,7 @@ function KeywordsEditor({
           className="max-h-[340px] min-h-[180px] resize-none text-[13px] leading-relaxed"
         />
         <p className="mt-2 flex items-center justify-between text-[11px] leading-relaxed text-faint">
-          <span>One keyword per line or comma-separated.</span>
+          <span>One keyword per line. Blank lines are ignored.</span>
           <span className="shrink-0 tabular-nums">{count}</span>
         </p>
       </div>

@@ -1224,6 +1224,66 @@
         }
       }
     },
+    "/api/script-projects/{id}/keywords": {
+      "put": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptProjectDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/script-projects/{id}/variants": {
       "get": {
         "tags": [
@@ -2513,66 +2573,6 @@
           }
         }
       }
-    },
-    "/api/script-projects/{id}/keywords": {
-      "put": {
-        "tags": [
-          "ScriptProjects"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProjectKeywordsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScriptProjectDto"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScriptProjectDto"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ScriptProjectDto"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -2803,7 +2803,8 @@
             "$ref": "#/components/schemas/PromptKind"
           },
           "useKeywords": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3280,7 +3281,8 @@
           "sourcePromptVersionId",
           "model",
           "variantStatus",
-          "variantError"
+          "variantError",
+          "version"
         ],
         "type": "object",
         "properties": {
@@ -3346,6 +3348,10 @@
           "variantError": {
             "type": "string",
             "nullable": true
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "uint32"
           }
         }
       },
@@ -3418,10 +3424,10 @@
           "sortOrder",
           "original",
           "variants",
+          "keywords",
           "createdBy",
           "createdAt",
-          "updatedAt",
-          "keywords"
+          "updatedAt"
         ],
         "type": "object",
         "properties": {
@@ -3461,6 +3467,16 @@
               "$ref": "#/components/schemas/ScriptDto"
             }
           },
+          "keywords": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/ScriptDto"
+              }
+            ]
+          },
           "createdBy": {
             "$ref": "#/components/schemas/UserRef"
           },
@@ -3471,16 +3487,6 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "keywords": {
-            "oneOf": [
-              {
-                "nullable": true
-              },
-              {
-                "$ref": "#/components/schemas/ScriptDto"
-              }
-            ]
           }
         }
       },
@@ -3739,6 +3745,22 @@
           }
         }
       },
+      "UpdateProjectKeywordsRequest": {
+        "required": [
+          "content"
+        ],
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "uint32",
+            "nullable": true
+          }
+        }
+      },
       "UpdatePromptRequest": {
         "required": [
           "name"
@@ -3961,17 +3983,6 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "UpdateProjectKeywordsRequest": {
-        "required": [
-          "content"
-        ],
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
           }
         }
       }

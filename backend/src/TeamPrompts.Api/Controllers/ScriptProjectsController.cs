@@ -40,7 +40,7 @@ public sealed class ScriptProjectsController(IScriptProjectService projects) : C
     /// <summary>Replace the project's keyword list (used by keyword-aware prompts). Empty clears it.</summary>
     [HttpPut("{id:guid}/keywords")]
     public async Task<ActionResult<ScriptProjectDto>> UpdateKeywords(Guid id, UpdateProjectKeywordsRequest req, CancellationToken ct)
-        => Ok(await projects.UpdateKeywordsAsync(id, req.Content, ct));
+        => Ok(await projects.UpdateKeywordsAsync(id, req.Content, req.ExpectedVersion, ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

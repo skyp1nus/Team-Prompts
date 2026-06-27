@@ -20,8 +20,10 @@ public interface IScriptProjectService
     Task DeleteAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>Set the project's keyword list. Creates the keyword Script lazily for legacy projects
-    /// that predate the feature.</summary>
-    Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, CancellationToken ct = default);
+    /// that predate the feature. <paramref name="expectedVersion"/> is the keyword Script's last-loaded
+    /// concurrency version — when it no longer matches the stored row the save is rejected with a
+    /// <see cref="ConflictException"/> (409) instead of clobbering a concurrent edit.</summary>
+    Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, uint? expectedVersion = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<ScriptDto>> ListVariantsAsync(Guid projectId, CancellationToken ct = default);
 
@@ -175,7 +177,7 @@ public sealed class ScriptProjectService(
         return (await GetAsync(id, ct))!;
     }
 
-    public async Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, CancellationToken ct = default)
+    public async Task<ScriptProjectDto> UpdateKeywordsAsync(Guid projectId, string content, uint? expectedVersion = null, CancellationToken ct = default)
     {
         var project = await db.ScriptProjects.FirstOrDefaultAsync(p => p.Id == projectId, ct)
                       ?? throw new NotFoundException("Project not found.");
@@ -201,6 +203,13 @@ public sealed class ScriptProjectService(
         }
         else
         {
+            // Optimistic concurrency: the client sends the version it last loaded. The freshly-loaded row
+            // already carries the current version, so a mismatch means someone saved in between — reject
+            // rather than overwrite their edit. (The xmin row-version on SaveChanges also guards the much
+            // smaller load→save window automatically.)
+            if (expectedVersion is { } ev && keywords.Version != ev)
+                throw new ConflictException(
+                    "These keywords were changed by someone else. Reload to see the latest, then reapply your edit.");
             keywords.ExtractedText = content;
         }
         await db.SaveChangesAsync(ct);

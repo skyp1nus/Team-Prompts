@@ -28,7 +28,7 @@ public sealed record ScriptDto(
     Guid Id, string Name, string OriginalFileName, FileType FileType, string ExtractedText,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, UserRef CreatedBy,
     Guid? ProjectId, ScriptKind Kind, Guid? SourceScriptId, Guid? SourcePromptVersionId,
-    string? Model, SessionStatus? VariantStatus, string? VariantError);
+    string? Model, SessionStatus? VariantStatus, string? VariantError, uint Version);
 
 public sealed record UpdateScriptRequest(string Name);
 
@@ -44,8 +44,11 @@ public sealed record ScriptProjectDto(
 
 public sealed record UpdateScriptProjectRequest(string Name);
 
-/// <summary>Replace a project's keyword list (the editable <c>Keywords</c> Script's text). Empty clears it.</summary>
-public sealed record UpdateProjectKeywordsRequest(string Content);
+/// <summary>Replace a project's keyword list (the editable <c>Keywords</c> Script's text). Empty clears it.
+/// <c>ExpectedVersion</c> is the <see cref="ScriptDto.Version"/> the client last loaded — when it no longer
+/// matches the stored keyword Script the save is rejected with 409 (optimistic concurrency). Null skips the
+/// check (e.g. first-time creation of the keyword Script for a legacy project).</summary>
+public sealed record UpdateProjectKeywordsRequest(string Content, uint? ExpectedVersion = null);
 
 /// <summary>Generate a new script-variant in a project. <c>PromptVersionId</c> null → the prompt's
 /// current main version. The prompt should be a <c>ScriptTransform</c> prompt (вижимка / rewrite).</summary>
