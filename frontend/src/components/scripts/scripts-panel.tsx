@@ -224,19 +224,35 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
               }}
             />
           )}
-          {detail?.variants.map((v) => (
-            <ScriptLeaf
-              key={v.id}
-              script={v}
-              active={v.id === activeScriptId}
-              selected={batchScriptIds.includes(v.id)}
-              onOpen={() => {
-                toggleBatchScript(v.id);
-                setActiveScriptId(v.id);
-              }}
-              projectId={project.id}
-            />
-          ))}
+          {/* Variants are generated FROM the source — nest them under it as a tree so the lineage is obvious. */}
+          {(detail?.variants.length ?? 0) > 0 && (
+            <div className="ml-[17px]">
+              {detail!.variants.map((v, i) => (
+                <div
+                  key={v.id}
+                  className={cn(
+                    "relative pl-3.5",
+                    // vertical spine: full height for inner rows, stops at the tick for the last one
+                    "before:absolute before:left-0 before:top-0 before:w-px before:bg-border before:content-['']",
+                    i === detail!.variants.length - 1 ? "before:h-[22px]" : "before:h-full",
+                    // horizontal tick into the row
+                    "after:absolute after:left-0 after:top-[22px] after:h-px after:w-2.5 after:bg-border after:content-['']",
+                  )}
+                >
+                  <ScriptLeaf
+                    script={v}
+                    active={v.id === activeScriptId}
+                    selected={batchScriptIds.includes(v.id)}
+                    onOpen={() => {
+                      toggleBatchScript(v.id);
+                      setActiveScriptId(v.id);
+                    }}
+                    projectId={project.id}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           {detail && !original && detail.variants.length === 0 && (
             <p className="px-2 py-2 text-[11.5px] text-faint">Empty project.</p>
           )}
@@ -330,7 +346,7 @@ function ScriptLeaf({
             </span>
           )}
         </div>
-        <div className="mt-px flex items-center gap-1 text-[10.5px] text-faint">
+        <div className="mt-px flex items-center gap-1 whitespace-nowrap text-[10.5px] text-faint">
           {isVariant ? (
             busy ? (
               <>
