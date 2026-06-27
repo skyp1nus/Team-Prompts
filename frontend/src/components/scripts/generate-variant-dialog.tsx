@@ -36,13 +36,23 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 export function GenerateVariantDialog({
   projectId,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: {
   projectId: string;
-  trigger: React.ReactElement;
+  /** Omit when the dialog is controlled via `open`/`onOpenChange` (e.g. opened from a menu item). */
+  trigger?: React.ReactElement;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
   const { activeWorkspaceId, setActiveScriptId, setProjectExpanded } = useWorkspace();
-  const [open, setOpen] = useState(false);
+  const [openInternal, setOpenInternal] = useState(false);
+  const open = openProp ?? openInternal;
+  const setOpen = (o: boolean) => {
+    setOpenInternal(o);
+    onOpenChange?.(o);
+  };
   const [promptId, setPromptId] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -87,7 +97,7 @@ export function GenerateVariantDialog({
         if (!o) reset();
       }}
     >
-      <DialogTrigger render={trigger} />
+      {trigger && <DialogTrigger render={trigger} />}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New alternative</DialogTitle>
