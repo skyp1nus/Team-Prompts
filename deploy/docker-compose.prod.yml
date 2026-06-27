@@ -48,7 +48,7 @@ services:
       Cors__AllowedOrigins: ${App__PublicBaseUrl}
     volumes:
       - dpkeys:/keys
-    mem_limit: 640m
+    mem_limit: 1024m            # host has 7.6 GB; give .NET + Hangfire batch jobs headroom
     networks: [web]
 
   web:
@@ -63,7 +63,7 @@ services:
       # NOTE: NEXT_PUBLIC_API_BASE_URL is inlined at BUILD time (empty = same origin
       # behind Caddy; OpenAPI paths already include /api). A runtime value cannot
       # override the inlined one — it is baked in the CI image build, not set here.
-    mem_limit: 320m
+    mem_limit: 512m            # host has 7.6 GB; comfortable ceiling for the Next.js standalone server
     networks: [web]
 
 networks:
