@@ -19,6 +19,7 @@ public sealed class ScriptVariantExecutor(
     IActivityLogger activity) : IScriptVariantExecutor
 {
     private static readonly Regex ScriptToken = new(@"\{\{\s*script\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex KeywordsToken = new(@"\{\{\s*keywords\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task ExecuteAsync(Guid scriptId, CancellationToken ct = default)
     {
@@ -31,15 +32,25 @@ public sealed class ScriptVariantExecutor(
                 ? await db.Scripts.AsNoTracking().Where(s => s.Id == srcId)
                     .Select(s => s.ExtractedText).FirstOrDefaultAsync(ct) ?? string.Empty
                 : string.Empty;
-            var promptContent = variant.SourcePromptVersionId is { } pvId
+            // Pull the prompt content AND its keyword-awareness in one read (the version owns neither —
+            // UseKeywords lives on the parent Prompt).
+            var promptInfo = variant.SourcePromptVersionId is { } pvId
                 ? await db.PromptVersions.AsNoTracking().Where(v => v.Id == pvId)
-                    .Select(v => v.Content).FirstOrDefaultAsync(ct) ?? string.Empty
-                : string.Empty;
+                    .Select(v => new { v.Content, UseKeywords = v.Prompt!.UseKeywords })
+                    .FirstOrDefaultAsync(ct)
+                : null;
+            var promptContent = promptInfo?.Content ?? string.Empty;
+            var useKeywords = promptInfo?.UseKeywords ?? false;
+            var keywords = useKeywords && variant.ProjectId is { } pid
+                ? await db.Scripts.AsNoTracking()
+                    .Where(s => s.ProjectId == pid && s.Kind == ScriptKind.Keywords)
+                    .Select(s => s.ExtractedText).FirstOrDefaultAsync(ct)
+                : null;
 
             variant.VariantStatus = SessionStatus.Streaming;
             await db.SaveChangesAsync(ct);
 
-            var messages = BuildMessages(promptContent, sourceText);
+            var messages = BuildMessages(promptContent, sourceText, keywords, useKeywords);
 
             var sb = new StringBuilder();
             decimal? costUsd = null;
@@ -111,27 +122,35 @@ public sealed class ScriptVariantExecutor(
     /// <summary>
     /// Builds the chat messages. The source script rides the always-on system layer, so the editable
     /// transform prompt stays a pure instruction. A power-user may inline it via a {{script}} token —
-    /// then it's substituted there and not duplicated into the system context.
+    /// then it's substituted there and not duplicated into the system context. When the prompt is
+    /// keyword-aware, the project keywords replace a {{keywords}} token if present, else ride along
+    /// as a keywords block.
     /// </summary>
-    private static List<OpenRouterMessage> BuildMessages(string promptContent, string script)
+    private static List<OpenRouterMessage> BuildMessages(string promptContent, string script, string? keywords, bool useKeywords)
     {
         var prompt = promptContent ?? string.Empty;
         script ??= string.Empty;
+        var kw = useKeywords ? (keywords ?? string.Empty).Trim() : string.Empty;
 
-        if (ScriptToken.IsMatch(prompt))
-        {
-            return
-            [
-                new("system", GenerationDefaults.ScriptTransformSystem()),
-                new("user", ScriptToken.Replace(prompt, script)),
-            ];
-        }
+        var keywordTokenUsed = useKeywords && KeywordsToken.IsMatch(prompt);
+        if (keywordTokenUsed)
+            prompt = KeywordsToken.Replace(prompt, kw);
 
-        var brief = prompt.Trim().Length == 0 ? "Produce the transformed script now." : prompt;
+        var scriptInline = ScriptToken.IsMatch(prompt);
+        if (scriptInline)
+            prompt = ScriptToken.Replace(prompt, script);
+
+        var system = new StringBuilder(GenerationDefaults.ScriptTransformSystem());
+        if (!scriptInline)
+            system.Append("\n\n").Append(GenerationDefaults.SourceScriptBlock(script));
+        if (kw.Length > 0 && !keywordTokenUsed)
+            system.Append("\n\n").Append(GenerationDefaults.KeywordsBlock(kw));
+
+        var user = prompt.Trim().Length == 0 ? "Produce the transformed script now." : prompt;
         return
         [
-            new("system", $"{GenerationDefaults.ScriptTransformSystem()}\n\n{GenerationDefaults.SourceScriptBlock(script)}"),
-            new("user", brief),
+            new("system", system.ToString()),
+            new("user", user),
         ];
     }
 }

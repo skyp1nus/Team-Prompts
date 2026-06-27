@@ -11,4 +11,5 @@ export interface CreatePromptRequest {
   name: string;
   content: string;
   kind?: PromptKind;
+  useKeywords?: boolean;
 }

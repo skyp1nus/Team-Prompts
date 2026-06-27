@@ -19,4 +19,5 @@ export interface ScriptProjectDto {
   createdBy: UserRef;
   createdAt: string;
   updatedAt: string;
+  keywords: unknown | null | ScriptDto;
 }

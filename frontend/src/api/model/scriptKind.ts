@@ -11,4 +11,5 @@ export type ScriptKind = typeof ScriptKind[keyof typeof ScriptKind];
 export const ScriptKind = {
   Original: 'Original',
   Variant: 'Variant',
+  Keywords: 'Keywords',
 } as const;

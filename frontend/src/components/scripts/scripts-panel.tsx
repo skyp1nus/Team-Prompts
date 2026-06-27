@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Eye, Folder, Loader2, MoreHorizontal, PanelLeftClose, Search, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/api/endpoints/script-projects/script-projects";
 import { FileType, type ScriptDto, ScriptKind, type ScriptProjectListItemDto, SessionStatus } from "@/api/model";
 import { GenerateVariantDialog } from "@/components/scripts/generate-variant-dialog";
+import { KeywordsDialog } from "@/components/scripts/keywords-dialog";
 import { ScriptViewerDialog } from "@/components/scripts/script-viewer-dialog";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
 import { Button } from "@/components/ui/button";
@@ -140,6 +141,7 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
 
   // orval types a nullable nested ref as `unknown | null | ScriptDto`; narrow it once.
   const original = (detail?.original ?? null) as ScriptDto | null;
+  const keywords = (detail?.keywords ?? null) as ScriptDto | null;
 
   const onOpenChange = (o: boolean) => {
     setProjectExpanded(project.id, o);
@@ -256,9 +258,67 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
           {detail && !original && detail.variants.length === 0 && (
             <p className="px-2 py-2 text-[11.5px] text-faint">Empty project.</p>
           )}
+          {/* The project's editable keyword list — pinned to the bottom of the tree, fed to keyword-aware prompts. */}
+          {detail && (
+            <KeywordsLeaf projectId={project.id} projectName={project.name} keywords={keywords} />
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function KeywordsLeaf({
+  projectId,
+  projectName,
+  keywords,
+}: {
+  projectId: string;
+  projectName: string;
+  keywords: ScriptDto | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const isEmpty = (keywords?.extractedText ?? "").trim().length === 0;
+
+  return (
+    <>
+      <div
+        onClick={() => setOpen(true)}
+        className="group/leaf relative my-[2px] flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1.5 pl-2 transition-colors hover:bg-accent"
+      >
+        {/* spacer aligns the icon with the source/variant rows (which lead with a checkbox) */}
+        <span className="size-[18px] shrink-0" />
+        <span className="flex size-[26px] shrink-0 items-center justify-center rounded-[6px] bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <KeyRound className="size-3.5" />
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="truncate text-[12.5px] font-medium">Keywords</span>
+          {/* empty → warn triangle; filled → nothing */}
+          {isEmpty && (
+            <span title="No keywords yet — click to add" className="flex shrink-0 text-warn">
+              <TriangleAlert className="size-3.5" />
+            </span>
+          )}
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+          className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
+          title="Edit keywords"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+      </div>
+      <KeywordsDialog
+        projectId={projectId}
+        projectName={projectName}
+        keywords={keywords}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
   );
 }
 

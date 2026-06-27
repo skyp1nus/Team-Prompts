@@ -51,6 +51,7 @@ export * from './setApiKeyRequest';
 export * from './setFavoriteModelsRequest';
 export * from './settingsDto';
 export * from './trayItemDto';
+export * from './updateProjectKeywordsRequest';
 export * from './updatePromptRequest';
 export * from './updateScriptProjectRequest';
 export * from './updateScriptRequest';

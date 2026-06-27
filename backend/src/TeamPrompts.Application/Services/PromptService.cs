@@ -12,7 +12,7 @@ public interface IPromptService
     Task<IReadOnlyList<PromptListItemDto>> ListAsync(Guid? workspaceId, PromptKind? kind, CancellationToken ct = default);
     Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default);
     Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default);
-    Task<PromptDetailDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
+    Task<PromptDetailDto> UpdateAsync(Guid id, UpdatePromptRequest req, CancellationToken ct = default);
     Task ReorderAsync(ReorderPromptsRequest req, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task<PromptVersionDto> CreateVersionAsync(Guid promptId, CreateVersionRequest req, CancellationToken ct = default);
@@ -42,14 +42,14 @@ public sealed class PromptService(
             .Select(p => new
             {
                 p.Id, p.Name, p.MainVersionId, p.CreatedByUserId, p.CreatedAt, p.UpdatedAt,
-                VersionCount = p.Versions.Count, p.Kind,
+                VersionCount = p.Versions.Count, p.Kind, p.UseKeywords,
             })
             .ToListAsync(ct);
 
         var dir = await users.GetAsync(rows.Select(r => r.CreatedByUserId), ct);
         return rows.Select(r => new PromptListItemDto(
             r.Id, r.Name, r.MainVersionId, Attribution.Of(dir, r.CreatedByUserId),
-            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind)).ToList();
+            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind, r.UseKeywords)).ToList();
     }
 
     public async Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default)
@@ -71,7 +71,8 @@ public sealed class PromptService(
             .ToList();
 
         return new PromptDetailDto(prompt.Id, prompt.Name, prompt.MainVersionId,
-            Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions, prompt.Kind);
+            Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions,
+            prompt.Kind, prompt.UseKeywords);
     }
 
     public async Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default)
@@ -91,6 +92,7 @@ public sealed class PromptService(
             WorkspaceId = req.WorkspaceId,
             Name = req.Name.Trim(),
             Kind = req.Kind,
+            UseKeywords = req.UseKeywords,
             CreatedByUserId = userId,
             SortOrder = minOrder - 1,
         };
@@ -118,11 +120,13 @@ public sealed class PromptService(
         return (await GetAsync(prompt.Id, ct))!;
     }
 
-    public async Task<PromptDetailDto> RenameAsync(Guid id, string name, CancellationToken ct = default)
+    public async Task<PromptDetailDto> UpdateAsync(Guid id, UpdatePromptRequest req, CancellationToken ct = default)
     {
         var prompt = await db.Prompts.FirstOrDefaultAsync(p => p.Id == id, ct)
                      ?? throw new NotFoundException("Prompt not found.");
-        prompt.Name = name.Trim();
+        prompt.Name = req.Name.Trim();
+        if (req.UseKeywords is { } useKeywords)
+            prompt.UseKeywords = useKeywords;
         await db.SaveChangesAsync(ct);
         return (await GetAsync(id, ct))!;
     }

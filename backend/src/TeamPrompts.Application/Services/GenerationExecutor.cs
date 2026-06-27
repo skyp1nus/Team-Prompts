@@ -23,6 +23,7 @@ public sealed class GenerationExecutor(
 {
     private static readonly Regex ListMarker = new(@"^\s*(\d+[\.\)]|[-*•‣·])\s+", RegexOptions.Compiled);
     private static readonly Regex ScriptToken = new(@"\{\{\s*script\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex KeywordsToken = new(@"\{\{\s*keywords\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task ExecuteAsync(Guid sessionId, CancellationToken ct = default)
     {
@@ -43,7 +44,10 @@ public sealed class GenerationExecutor(
             await db.SaveChangesAsync(ct);
             await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Streaming), null, ct);
 
-            var messages = BuildMessages(session.PromptVersion.Content, session.Script.ExtractedText);
+            // Keyword-aware prompts pull in the script's project keyword list (one Script per project).
+            var useKeywords = session.Prompt?.UseKeywords ?? false;
+            var keywords = useKeywords ? await LoadKeywordsAsync(session.Script.ProjectId, ct) : null;
+            var messages = BuildMessages(session.PromptVersion.Content, session.Script.ExtractedText, keywords, useKeywords);
 
             // ONE completion. Stream the raw text live into the first slot so the user sees progress.
             var sb = new StringBuilder();
@@ -143,30 +147,49 @@ public sealed class GenerationExecutor(
         }
     }
 
+    /// <summary>Reads a project's keyword list (its <see cref="ScriptKind.Keywords"/> Script). Null when
+    /// the script is ungrouped or the project has no keyword list yet.</summary>
+    private async Task<string?> LoadKeywordsAsync(Guid? projectId, CancellationToken ct)
+    {
+        if (projectId is not { } pid) return null;
+        return await db.Scripts.AsNoTracking()
+            .Where(s => s.ProjectId == pid && s.Kind == ScriptKind.Keywords)
+            .Select(s => s.ExtractedText)
+            .FirstOrDefaultAsync(ct);
+    }
+
     /// <summary>
     /// Builds the chat messages. The script is supplied by the always-on system layer, so the
     /// editable prompt is a pure brief. A power-user may still place it inline via a {{script}}
     /// token — in that case it is substituted there and NOT duplicated into the system context.
+    /// When the prompt is keyword-aware, the project keywords replace a {{keywords}} token if present,
+    /// otherwise ride the system context as a keywords block.
     /// </summary>
-    private static List<OpenRouterMessage> BuildMessages(string promptContent, string script)
+    private static List<OpenRouterMessage> BuildMessages(string promptContent, string script, string? keywords, bool useKeywords)
     {
         var prompt = promptContent ?? string.Empty;
         script ??= string.Empty;
+        var kw = useKeywords ? (keywords ?? string.Empty).Trim() : string.Empty;
 
-        if (ScriptToken.IsMatch(prompt))
-        {
-            return
-            [
-                new("system", GenerationDefaults.SystemGuardrail()),
-                new("user", ScriptToken.Replace(prompt, script)),
-            ];
-        }
+        var keywordTokenUsed = useKeywords && KeywordsToken.IsMatch(prompt);
+        if (keywordTokenUsed)
+            prompt = KeywordsToken.Replace(prompt, kw);
 
-        var brief = prompt.Trim().Length == 0 ? "Generate the options now." : prompt;
+        var scriptInline = ScriptToken.IsMatch(prompt);
+        if (scriptInline)
+            prompt = ScriptToken.Replace(prompt, script);
+
+        var system = new StringBuilder(GenerationDefaults.SystemGuardrail());
+        if (!scriptInline)
+            system.Append("\n\n").Append(GenerationDefaults.ScriptBlock(script));
+        if (kw.Length > 0 && !keywordTokenUsed)
+            system.Append("\n\n").Append(GenerationDefaults.KeywordsBlock(kw));
+
+        var user = prompt.Trim().Length == 0 ? "Generate the options now." : prompt;
         return
         [
-            new("system", $"{GenerationDefaults.SystemGuardrail()}\n\n{GenerationDefaults.ScriptBlock(script)}"),
-            new("user", brief),
+            new("system", system.ToString()),
+            new("user", user),
         ];
     }
 

@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Sheet,
@@ -38,6 +39,7 @@ const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   kind: z.enum([PromptKind.Metadata, PromptKind.ScriptTransform]),
   content: z.string().trim().min(1, "Prompt instructions are required"),
+  useKeywords: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -49,7 +51,7 @@ export function CreatePromptDialog() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", kind: PromptKind.Metadata, content: "" },
+    defaultValues: { name: "", kind: PromptKind.Metadata, content: "", useKeywords: false },
   });
 
   const onSubmit = (values: FormValues) =>
@@ -60,6 +62,7 @@ export function CreatePromptDialog() {
           name: values.name,
           content: values.content,
           kind: values.kind,
+          useKeywords: values.useKeywords,
         },
       },
       {
@@ -163,6 +166,29 @@ export function CreatePromptDialog() {
                       />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="useKeywords"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start justify-between gap-3 rounded-lg border border-border p-3.5">
+                    <div className="min-w-0 space-y-0.5">
+                      <FormLabel>Use project keywords</FormLabel>
+                      <p className="text-[11px] leading-relaxed text-faint">
+                        Injects the active project&apos;s keyword list into every run with this prompt. Add{" "}
+                        <code className="rounded bg-muted px-1 py-px font-mono text-[10px]">{"{{keywords}}"}</code> in
+                        the instructions to control placement, or it&apos;s appended automatically.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={(c) => field.onChange(c === true)}
+                        className="mt-0.5 shrink-0"
+                      />
+                    </FormControl>
                   </FormItem>
                 )}
               />

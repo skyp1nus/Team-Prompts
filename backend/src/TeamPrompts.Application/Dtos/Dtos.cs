@@ -39,10 +39,13 @@ public sealed record ScriptProjectListItemDto(
 
 public sealed record ScriptProjectDto(
     Guid Id, Guid WorkspaceId, string Name, Guid? OriginalScriptId, int SortOrder,
-    ScriptDto? Original, IReadOnlyList<ScriptDto> Variants,
+    ScriptDto? Original, IReadOnlyList<ScriptDto> Variants, ScriptDto? Keywords,
     UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 public sealed record UpdateScriptProjectRequest(string Name);
+
+/// <summary>Replace a project's keyword list (the editable <c>Keywords</c> Script's text). Empty clears it.</summary>
+public sealed record UpdateProjectKeywordsRequest(string Content);
 
 /// <summary>Generate a new script-variant in a project. <c>PromptVersionId</c> null → the prompt's
 /// current main version. The prompt should be a <c>ScriptTransform</c> prompt (вижимка / rewrite).</summary>
@@ -52,7 +55,7 @@ public sealed record CreateScriptVariantRequest(
 // ---- Prompts & versions ----
 public sealed record PromptListItemDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind, bool UseKeywords);
 
 public sealed record PromptVersionDto(
     Guid Id, Guid PromptId, Guid? ParentVersionId, string Content,
@@ -60,10 +63,14 @@ public sealed record PromptVersionDto(
 
 public sealed record PromptDetailDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions, PromptKind Kind);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions,
+    PromptKind Kind, bool UseKeywords);
 
-public sealed record CreatePromptRequest(Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.Metadata);
-public sealed record UpdatePromptRequest(string Name);
+public sealed record CreatePromptRequest(
+    Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.Metadata, bool UseKeywords = false);
+
+/// <summary><c>UseKeywords</c> null → leave it unchanged (rename-only).</summary>
+public sealed record UpdatePromptRequest(string Name, bool? UseKeywords = null);
 
 /// <summary>Set the team-wide top-to-bottom order of a workspace's prompts. <c>OrderedIds</c> is the
 /// full list in the new order; each prompt's <c>SortOrder</c> becomes its index in this list.</summary>
