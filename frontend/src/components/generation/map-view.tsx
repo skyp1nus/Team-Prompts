@@ -337,6 +337,7 @@ export function MapView({
     }
     const nw = w + PAD_X;
     const nh = h + PAD_Y;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- bbox is measured from the DOM after layout; there is no render-time value to derive
     setLayerSize((ls) => (ls.w === nw && ls.h === nh ? ls : { w: nw, h: nh }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos, ready, structuralKey, sizeOf, layoutVersion, sizeTick, mapOrientation]);
@@ -464,6 +465,7 @@ export function MapView({
     const dy = e.clientY - d.py;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     if (!d.moved) {
+      // eslint-disable-next-line react-hooks/immutability -- d is dragRef.current (a mutable ref); the gesture flag must not trigger a re-render
       d.moved = true;
       setDragKey(d.key);
       setHover(null);
@@ -474,6 +476,7 @@ export function MapView({
   const onNodePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     if (!d || e.pointerId !== d.pointerId) return;
+    // eslint-disable-next-line react-hooks/immutability -- clearing the drag-gesture ref; refs are mutable by design
     dragRef.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -620,7 +623,6 @@ export function MapView({
       });
     }
     setEdges(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structuralKey, layoutVersion, sizeTick, pos, layerSize.w, layerSize.h, mapOrientation]);
 
   /* resize → recompute edges */

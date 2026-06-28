@@ -91,10 +91,12 @@ function usePersistedState<T>(key: string, initial: T): [T, React.Dispatch<React
   const [state, setState] = useState<T>(initial);
   const skipSave = useRef(true);
 
-  // Load once on mount (client only — avoids hydration mismatch).
+  // Load once on mount (client only — avoids hydration mismatch; a lazy initializer would read
+  // localStorage during the server render and diverge from the client).
   useEffect(() => {
     try {
       const raw = localStorage.getItem(key);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-mount hydration
       if (raw != null) setState(JSON.parse(raw) as T);
     } catch {
       /* ignore corrupt/unavailable storage */

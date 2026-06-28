@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, GitBranch } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued";
 import { toast } from "sonner";
@@ -59,10 +59,14 @@ export function PromptDetailDialog({ promptId, open, onOpenChange }: Props) {
   const versions = useMemo(() => prompt?.versions ?? [], [prompt]);
 
   const [branchOf, setBranchOf] = useState<string | null>(null);
-
-  useEffect(() => {
+  // Reset the branch selection when the dialog switches prompts or is reopened — tracked across
+  // renders rather than in an effect, so it applies in the same paint.
+  const detailKey = `${promptId}:${open}`;
+  const [syncedKey, setSyncedKey] = useState(detailKey);
+  if (detailKey !== syncedKey) {
+    setSyncedKey(detailKey);
     setBranchOf(null);
-  }, [promptId, open]);
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -143,7 +147,7 @@ function DetailPanel({
 
   // Pick a version for the next generation. Choosing main clears the pin so the run keeps following
   // whatever the team promotes; choosing any other version pins it. Also selects the prompt for the run.
-  const useForGeneration = (v: PromptVersionDto, idx: number) => {
+  const applyForGeneration = (v: PromptVersionDto, idx: number) => {
     setPromptVersion(promptId, v.isMain ? null : { versionId: v.id, number: idx + 1 });
     if (!selectedPromptIds.includes(promptId)) togglePrompt(promptId);
     toast.success(v.isMain ? "The next run will follow Main" : `The next run will use v${idx + 1}`);
@@ -152,11 +156,10 @@ function DetailPanel({
   const [fromId, setFromId] = useState<string | null>(null);
   const [toId, setToId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!main) return;
-    setToId((cur) => cur ?? main.id);
-    setFromId((cur) => cur ?? (versions.find((v) => v.id !== main.id) ?? main).id);
-  }, [versions, main]);
+  // Seed the compare selectors from Main once it's available (only while still unset), during render
+  // instead of in an effect.
+  if (main && toId === null) setToId(main.id);
+  if (main && fromId === null) setFromId((versions.find((v) => v.id !== main.id) ?? main).id);
 
   const fromV = versions.find((v) => v.id === fromId);
   const toV = versions.find((v) => v.id === toId);
@@ -266,7 +269,7 @@ function DetailPanel({
                     </div>
                     {v.note && <div className="mt-1.5 text-[12.5px] leading-snug text-muted-foreground">{v.note}</div>}
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      <MiniBtn accent={activeVersionId === v.id} onClick={() => useForGeneration(v, idx)}>
+                      <MiniBtn accent={activeVersionId === v.id} onClick={() => applyForGeneration(v, idx)}>
                         {activeVersionId === v.id ? "✓ Using for next run" : "Use for generation"}
                       </MiniBtn>
                       {!v.isMain && (

@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, KeyRound, RefreshCw, Star, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -176,13 +176,16 @@ function FavoriteModelsCard({ settings }: { settings?: SettingsDto }) {
   const refresh = usePostApiSettingsModelsRefresh();
   const models = useMemo(() => settings?.availableModels ?? [], [settings?.availableModels]);
 
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(settings?.favoriteModels ?? []);
   const [freeOnly, setFreeOnly] = useState(false);
 
-  // Sync the selection from the server once settings load / change.
-  useEffect(() => {
-    if (settings?.favoriteModels) setSelected(settings.favoriteModels);
-  }, [settings?.favoriteModels]);
+  // Re-seed the local selection whenever the server's favorites change (incl. first load). Tracked
+  // across renders instead of in an effect, so there's no extra paint with a stale selection.
+  const [syncedFav, setSyncedFav] = useState(settings?.favoriteModels);
+  if (settings?.favoriteModels && settings.favoriteModels !== syncedFav) {
+    setSyncedFav(settings.favoriteModels);
+    setSelected(settings.favoriteModels);
+  }
 
   const visible = freeOnly ? models.filter((m) => m.isFree) : models;
 

@@ -17,10 +17,12 @@ export function AccentProvider({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useTheme();
   const [accent, setAccentState] = useState<AccentKey>(DEFAULT_ACCENT);
 
-  // load saved choice once
+  // Load the saved accent once on mount. Must run post-mount (not a lazy initializer): the server
+  // renders DEFAULT_ACCENT, so reading localStorage during render would cause a hydration mismatch.
   useEffect(() => {
     try {
       const saved = localStorage.getItem(ACCENT_STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-mount hydration
       if (isAccentKey(saved)) setAccentState(saved);
     } catch {}
   }, []);

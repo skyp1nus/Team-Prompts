@@ -17,7 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, GripVertical, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   useDeleteApiResultsResultIdFavorite,
@@ -38,14 +38,20 @@ export function SelectionTray() {
   const copyEvent = usePostApiResultsResultIdCopy();
 
   const [order, setOrder] = useState<string[]>([]);
-  useEffect(() => {
-    const ids = (data ?? []).map((t) => t.resultId);
+  // Merge the tray's drag-order with the latest server ids during render (not in an effect): keep the
+  // user's order for ids that still exist, append new ones. Guarded on the id set so it only runs when
+  // the tray's contents actually change.
+  const ids = (data ?? []).map((t) => t.resultId);
+  const idsKey = ids.join("|");
+  const [syncedIds, setSyncedIds] = useState("");
+  if (idsKey !== syncedIds) {
+    setSyncedIds(idsKey);
     setOrder((prev) => {
       const kept = prev.filter((id) => ids.includes(id));
       const added = ids.filter((id) => !kept.includes(id));
       return [...kept, ...added];
     });
-  }, [data]);
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const items = order
