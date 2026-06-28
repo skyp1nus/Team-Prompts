@@ -46,6 +46,8 @@ type WorkspaceValue = {
   /** Extra scripts chosen for a batch run (left panel multi-select). */
   batchScriptIds: string[];
   toggleBatchScript: (id: string) => void;
+  /** Idempotently mark a script as selected ("use as context"). Used when a new source is added. */
+  selectBatchScript: (id: string) => void;
   clearBatch: () => void;
   /** Drop any selected/active script id that no longer exists (e.g. after a delete). */
   pruneScripts: (existingIds: string[]) => void;
@@ -202,6 +204,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setBatchScriptIds((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])),
     [setBatchScriptIds],
   );
+  const selectBatchScript = useCallback(
+    (id: string) => setBatchScriptIds((p) => (p.includes(id) ? p : [...p, id])),
+    [setBatchScriptIds],
+  );
   const clearBatch = useCallback(() => setBatchScriptIds([]), [setBatchScriptIds]);
 
   const pruneScripts = useCallback(
@@ -249,6 +255,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setPromptVersion,
         batchScriptIds,
         toggleBatchScript,
+        selectBatchScript,
         clearBatch,
         pruneScripts,
         expandedProjectIds,
