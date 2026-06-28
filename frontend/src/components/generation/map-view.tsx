@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
@@ -53,8 +53,19 @@ import {
 import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type ScriptDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { VersionBadge } from "@/components/generation/version-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/auth-context";
 import { formatRelative, modelLabel } from "@/lib/format";
 import { providerDot, providerOf } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
@@ -77,6 +88,15 @@ const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, +z.toFixed(3)));
 
 /** How many characters a collapsed result row should fit before truncating. */
 const PREVIEW_MAX = 100;
+
+/** Refresh everything a run/output delete affects: the script's sessions + tray, the scripts list's
+ *  session counts, and the canvas layout. Shared by the per-run and whole-output delete paths so they
+ *  can't drift. The scripts-list invalidation is targeted (not the shared canvas-layout query). */
+function invalidateAfterRunDelete(qc: QueryClient, scriptId: string, onLayoutChange: () => void) {
+  invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
+  qc.invalidateQueries({ queryKey: getGetApiScriptsQueryKey() });
+  onLayoutChange();
+}
 
 type Transform = { z: number; tx: number; ty: number };
 type Hover = { type: "prompt" | "col"; id: string } | null;
@@ -1247,34 +1267,28 @@ function OutputNode({
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
+  const { isPrivileged } = useAuth();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const copyEvent = usePostApiResultsResultIdCopy();
   const deleteRun = useDeleteApiGenerationSessionsSessionId();
   const [copied, setCopied] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const dot = providerDot(model);
   const pinnedVersionId = promptVersions[promptId]?.versionId ?? null;
 
-  // Delete this model's whole output — every run/session for it. Confirm first; gone for everyone.
+  // Delete this model's whole output — every run/session for it. Confirmed via AlertDialog; the
+  // session-delete endpoint is privileged-only (Owner/Admin), so the control is hidden otherwise.
   const removeOutput = async () => {
     const ids = runs.map((r) => r.session.id);
     if (ids.length === 0 || deleteRun.isPending) return;
     const many = ids.length > 1;
-    const ok = confirm(
-      many
-        ? `Delete this ${modelLabel(model)} output and all ${ids.length} runs? This can’t be undone.`
-        : "Delete this run and its results? This can’t be undone.",
-    );
-    if (!ok) return;
     try {
       await Promise.all(ids.map((sessionId) => deleteRun.mutateAsync({ sessionId })));
       toast.success(many ? "Output deleted" : "Run deleted");
     } catch {
       toast.error("Couldn’t delete");
     } finally {
-      invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
-      // Refresh the scripts list (SessionCount) without sweeping the shared canvas-layout query.
-      qc.invalidateQueries({ queryKey: getGetApiScriptsQueryKey() });
-      onLayoutChange();
+      invalidateAfterRunDelete(qc, scriptId, onLayoutChange);
     }
   };
 
@@ -1372,6 +1386,7 @@ function OutputNode({
                 anchor={j === 0}
                 label={multi ? (isLatest ? "Latest" : `Run ${j + 1}`) : ""}
                 time={multi ? formatRelative(run.session.createdAt) : ""}
+                canDeleteRun={multi}
               />
             );
           })}
@@ -1395,7 +1410,12 @@ function OutputNode({
                   number={run.session.promptVersionNumber}
                   isMain={run.session.isMainVersion}
                 />
-                <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+                <RunBlock
+                  run={run}
+                  scriptId={scriptId}
+                  onLayoutChange={onLayoutChange}
+                  canDeleteRun={displayed.length > 1}
+                />
               </div>
             ))}
           </div>
@@ -1410,19 +1430,36 @@ function OutputNode({
           <span className="shrink-0 text-[10px] text-faint">{providerOf(model)}</span>
         </span>
         <span className="flex-1" />
-        <button
-          onClick={removeOutput}
-          disabled={deleteRun.isPending}
-          title={runs.length > 1 ? `Delete this output (${runs.length} runs)` : "Delete this run"}
-          aria-label="Delete this output"
-          className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-        >
-          {deleteRun.isPending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Trash2 className="size-3.5" />
-          )}
-        </button>
+        {/* Whole-output delete — privileged-only (matches the Owner/Admin-gated delete endpoint). */}
+        {isPrivileged && (
+          <>
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={deleteRun.isPending}
+              title={runs.length > 1 ? `Delete this output (${runs.length} runs)` : "Delete this run"}
+              aria-label="Delete this output"
+              className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+            >
+              {deleteRun.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+            </button>
+            <DeleteConfirmDialog
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
+              pending={deleteRun.isPending}
+              title={runs.length > 1 ? "Delete this output?" : "Delete this run?"}
+              description={
+                runs.length > 1
+                  ? `This deletes the ${modelLabel(model)} output and all ${runs.length} runs. This can’t be undone.`
+                  : "This deletes the run and its results. This can’t be undone."
+              }
+              onConfirm={removeOutput}
+            />
+          </>
+        )}
         {best && (
           <button
             onClick={copyBest}
@@ -1503,6 +1540,7 @@ function RunCard({
   anchor,
   label,
   time,
+  canDeleteRun,
 }: {
   run: SessionWithResultsDto;
   scriptId: string;
@@ -1512,6 +1550,7 @@ function RunCard({
   anchor: boolean;
   label: string;
   time: string;
+  canDeleteRun: boolean;
 }) {
   const probeText = useMemo(() => {
     const longest = run.results.reduce((l, r) => (r.content.length > l.length ? r.content : l), "");
@@ -1528,7 +1567,7 @@ function RunCard({
     >
       <RunMeta label={label} time={time} number={run.session.promptVersionNumber} isMain={run.session.isMainVersion} />
       <WidthProbe text={probeText} />
-      <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} />
+      <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} canDeleteRun={canDeleteRun} />
     </div>
   );
 }
@@ -1592,15 +1631,23 @@ function RunBlock({
   run,
   scriptId,
   onLayoutChange,
+  // Only offer the per-run delete when the output has more than one run. For a single-run output the
+  // OutputNode header's whole-output delete already covers it, so a per-run button would just be a
+  // duplicate control deleting the same session.
+  canDeleteRun = false,
 }: {
   run: SessionWithResultsDto;
   scriptId: string;
   onLayoutChange: () => void;
+  canDeleteRun?: boolean;
 }) {
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
+  const { isPrivileged } = useAuth();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
+  const deleteRun = useDeleteApiGenerationSessionsSessionId();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const ls = live[run.session.id];
   const status = (ls?.status ?? run.session.status) as string;
   const streaming = status === SessionStatus.Streaming || status === SessionStatus.Queued;
@@ -1608,6 +1655,20 @@ function RunBlock({
   const failed = status === SessionStatus.Failed;
   const error = (ls?.error ?? run.session.error) ?? null;
   const rateLimited = !!error && error.includes("429");
+
+  // Delete just THIS run (one GenerationSession). Privileged-only (Owner/Admin), matching the
+  // session-delete endpoint's policy; mirrors the whole-output delete's invalidation.
+  const removeRun = async () => {
+    if (deleteRun.isPending) return;
+    try {
+      await deleteRun.mutateAsync({ sessionId: run.session.id });
+      toast.success("Run deleted");
+    } catch {
+      toast.error("Couldn’t delete");
+    } finally {
+      invalidateAfterRunDelete(qc, scriptId, onLayoutChange);
+    }
+  };
 
   const results = [...run.results].sort((a, b) => a.index - b.index);
   const resultIndices = new Set(results.map((r) => r.index));
@@ -1681,7 +1742,83 @@ function RunBlock({
           Retry — partial result
         </button>
       )}
+      {/* Per-run delete — removes just this one session. Privileged-only (Owner/Admin), matching
+          the session-delete endpoint's policy. Hidden while streaming, and only shown when the
+          output has more than one run (otherwise the header's whole-output delete already covers it). */}
+      {isPrivileged && canDeleteRun && !streaming && (
+        <>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={deleteRun.isPending}
+              title="Delete this run"
+              aria-label="Delete this run"
+              className="flex h-6 items-center gap-1 rounded-[7px] px-1.5 text-[10.5px] text-faint transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+            >
+              {deleteRun.isPending ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Trash2 className="size-3" />
+              )}
+              Delete run
+            </button>
+          </div>
+          <DeleteConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            pending={deleteRun.isPending}
+            title="Delete this run?"
+            description="This deletes the run and its results. This can’t be undone."
+            onConfirm={removeRun}
+          />
+        </>
+      )}
     </div>
+  );
+}
+
+/** Shared confirm dialog for destructive run/output deletes. Controlled so the trigger can live on a
+ *  separate toolbar button; runs `onConfirm` then closes. */
+function DeleteConfirmDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  pending,
+  title,
+  description,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void | Promise<void>;
+  pending: boolean;
+  title: string;
+  description: string;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={pending}
+            onClick={async (e) => {
+              // Run the delete, then close ourselves (AlertDialogAction doesn't auto-close).
+              e.preventDefault();
+              await onConfirm();
+              onOpenChange(false);
+            }}
+          >
+            {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

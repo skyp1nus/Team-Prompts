@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, GitBranch } from "lucide-react";
+import { ArrowRight, Check, GitBranch, Pencil, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -87,6 +87,7 @@ export function PromptDetailDialog({ promptId, open, onOpenChange }: Props) {
             promptName={prompt.name}
             kind={prompt.kind}
             useSummarySource={prompt.useSummarySource}
+            useKeywords={prompt.useKeywords}
             versions={versions}
             onBranch={(id) => setBranchOf(id)}
             onPicked={() => onOpenChange(false)}
@@ -110,6 +111,7 @@ function DetailPanel({
   promptName,
   kind,
   useSummarySource,
+  useKeywords,
   versions,
   onBranch,
   onPicked,
@@ -118,6 +120,7 @@ function DetailPanel({
   promptName: string;
   kind: PromptKind;
   useSummarySource: boolean;
+  useKeywords: boolean;
   versions: PromptVersionDto[];
   onBranch: (versionId: string) => void;
   onPicked: () => void;
@@ -180,7 +183,7 @@ function DetailPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-start gap-3 border-b border-border p-5 pr-12">
         <div className="flex-1">
-          <div className="text-[17px] leading-tight font-[650]">{promptName}</div>
+          <EditablePromptName promptId={promptId} promptName={promptName} useKeywords={useKeywords} />
           <div className="mt-1 text-[12.5px] text-faint">
             {versions.length} saved version{versions.length === 1 ? "" : "s"}
             {main && <> · the team is using {vLabel(versions, main.id)}</>}
@@ -443,6 +446,102 @@ function BranchPanel({
           </div>
         </form>
       </Form>
+    </div>
+  );
+}
+
+/* ---------------- editable name ---------------- */
+/** Inline rename of the prompt's title. Saves via PUT /api/prompts/{id} which only repoints
+ *  Prompt.Name — it does NOT create a new PromptVersion/draft. Always sends the current
+ *  `useKeywords` flag alongside `name` so the rename can't clear it. */
+function EditablePromptName({
+  promptId,
+  promptName,
+  useKeywords,
+}: {
+  promptId: string;
+  promptName: string;
+  useKeywords: boolean;
+}) {
+  const qc = useQueryClient();
+  const rename = usePutApiPromptsId();
+  // `null` = not editing. A string = the live draft, seeded from the current name when editing opens.
+  const [draft, setDraft] = useState<string | null>(null);
+  const editing = draft !== null;
+
+  const cancel = () => setDraft(null);
+
+  const save = () => {
+    const next = (draft ?? "").trim();
+    if (!next || next === promptName) {
+      cancel();
+      return;
+    }
+    rename.mutate(
+      { id: promptId, data: { name: next, useKeywords } },
+      {
+        onSuccess: async () => {
+          await invalidatePath(qc, "/api/prompts");
+          toast.success("Renamed");
+          setDraft(null);
+        },
+        onError: () => toast.error("Rename failed"),
+      },
+    );
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setDraft(promptName)}
+        title="Rename prompt"
+        className="group/name -mx-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent"
+      >
+        <span className="truncate text-[17px] leading-tight font-[650]">{promptName}</span>
+        <Pencil className="size-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover/name:opacity-100" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        autoFocus
+        value={draft ?? ""}
+        disabled={rename.isPending}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            save();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        className="h-8 text-[15px] font-semibold"
+        aria-label="Prompt name"
+      />
+      <Button
+        type="button"
+        size="icon-sm"
+        onClick={save}
+        disabled={rename.isPending}
+        aria-label="Save name"
+      >
+        <Check className="size-3.5" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={cancel}
+        disabled={rename.isPending}
+        aria-label="Cancel rename"
+      >
+        <X className="size-3.5" />
+      </Button>
     </div>
   );
 }
