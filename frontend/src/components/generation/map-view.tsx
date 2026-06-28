@@ -54,6 +54,7 @@ import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type Scrip
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelative, modelLabel } from "@/lib/format";
 import { providerDot, providerOf } from "@/lib/models";
 import { invalidatePath } from "@/lib/query/invalidate";
@@ -222,6 +223,9 @@ export function MapView({
 
   const [t, setT] = useState<Transform>({ z: 0.8, tx: 40, ty: 28 });
   const [layoutVersion, setLayoutVersion] = useState(0);
+  // Bumps on any block resize — first measurement, streamed token, expand/collapse, viewport resize.
+  // The placement pass depends on it so auto-placed lanes re-stack off real measured heights (a run
+  // added below an existing block never overlaps); the layer bbox + edges follow too.
   const [sizeTick, setSizeTick] = useState(0);
   const [hover, setHover] = useState<Hover>(null);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -233,7 +237,11 @@ export function MapView({
 
   const nodes = useMemo(() => flattenNodes(groups, summaryKey), [groups, summaryKey]);
   const nodeKeys = useMemo(() => nodes.map((n) => n.key), [nodes]);
-  const structuralKey = useMemo(() => nodeKeys.join("|"), [nodeKeys]);
+  // The ordered prompt-id sequence (lane order) is part of the structure: reordering prompts in the
+  // right panel must reflow the canvas lanes, not only adding/removing a block. Prepending it makes
+  // the placement effect re-run on a pure reorder even if the *set* of node keys is unchanged.
+  const promptSeq = useMemo(() => groups.map((g) => g.promptId).join(">"), [groups]);
+  const structuralKey = useMemo(() => `${promptSeq}#${nodeKeys.join("|")}`, [promptSeq, nodeKeys]);
   const serverPos = useMemo(() => {
     const m: Record<string, XY> = {};
     for (const n of savedNodes ?? []) m[n.nodeKey] = { x: n.x, y: n.y };
@@ -262,8 +270,9 @@ export function MapView({
     }
   }, []);
 
-  /* Re-measure when a block's own content grows/shrinks (live token streaming, expanding a result) —
-     not just on viewport resize — so edges and the layer bbox keep following the block. */
+  /* Re-measure when a block's own content grows/shrinks (first paint, live token streaming, expanding
+     a result) — not just on viewport resize — so the placement pass, edges and the layer bbox all keep
+     following the block. */
   useEffect(() => {
     const ro = new ResizeObserver(() => setSizeTick((s) => s + 1));
     nodeRoRef.current = ro;
@@ -273,11 +282,13 @@ export function MapView({
       nodeRoRef.current = null;
     };
   }, []);
-  /** Measure a block in layer coordinates (screen size ÷ current zoom). */
+  /** Measure a block in layer coordinates (screen size ÷ current zoom). Before a block is in the DOM
+   *  we can't measure it, so estimate a height generous enough that the auto lane below never seeds on
+   *  top of it; the real height arrives via the ResizeObserver (`sizeTick`) and reflows the lane. */
   const sizeOf = useCallback((key: string) => {
     const el = nodeEls.current.get(key);
     const z = tRef.current.z || 1;
-    if (!el) return { w: PROMPT_W, h: 120 };
+    if (!el) return { w: PROMPT_W, h: 220 };
     const r = el.getBoundingClientRect();
     return { w: r.width / z, h: r.height / z };
   }, []);
@@ -294,10 +305,11 @@ export function MapView({
 
   /* Resolve positions: a block that was dragged (has a saved position) stays put — manual placement
      is shared and always wins. Every other block is *auto*, so it follows the prompt order via the
-     grid and reflows whenever that order (or the block set) changes. An actively-dragged block is left
-     alone. Block sizes are measured from the DOM (rendered hidden until placed), so seeds never overlap.
-     This runs on structural changes (reorder/add/remove encode into `structuralKey`) and on saved-node
-     changes — not on every render — so streaming a token doesn't reshuffle the canvas. */
+     grid and reflows whenever that order, the block set, OR a block's measured height changes — so a
+     run added below an existing block always re-stacks the lane below it instead of overlapping. An
+     actively-dragged block is left alone. `setPos` short-circuits when nothing moved, so this stays
+     cheap; auto lanes shift down as content grows (incl. streaming) precisely to avoid overlap, while
+     manual placements never move. */
   useLayoutEffect(() => {
     if (!canvasReady) return;
     setPos((prev) => {
@@ -318,10 +330,16 @@ export function MapView({
       return changed ? next : prev;
     });
     setReady(true);
-    // Flipping orientation rewrites every block's footprint (tall stack ↔ wide chain), so re-seed the
-    // auto-grid from fresh measurements — manual placements keep their saved spot, auto blocks reflow.
+    // Re-run on:
+    //  • structuralKey  — lanes reorder / a block is added or removed
+    //  • serverPos      — a teammate's manual placement arrives
+    //  • mapOrientation — tall stack ↔ wide chain rewrites every footprint
+    //  • layoutVersion  — an explicit layout change (generate-more, delete a run, expand a result)
+    //  • sizeTick       — any block was measured / grew / shrank (incl. first paint + streaming); auto
+    //                     lanes re-stack off real heights so the lane below a growing block never ends
+    //                     up underneath it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasReady, structuralKey, serverPos, sizeOf, mapOrientation]);
+  }, [canvasReady, structuralKey, serverPos, sizeOf, mapOrientation, layoutVersion, sizeTick]);
 
   /* Size the layer to the blocks' bounding box so pan/fit and the grid background cover everything. */
   useLayoutEffect(() => {
@@ -1707,9 +1725,10 @@ function ResultRow({
   const hiBy = result.highlightedBy as UserRef | null | undefined;
   const dimmed = showHighlightsOnly && !isHi;
 
-  // Collapsed rows show at most PREVIEW_MAX chars; the card is sized to fit exactly that many.
-  const preview =
-    result.content.length > PREVIEW_MAX ? `${result.content.slice(0, PREVIEW_MAX)}…` : result.content;
+  // Collapsed rows show at most PREVIEW_MAX (100) chars, ellipsised past that; the card is sized to the
+  // ACTUAL text (via WidthProbe), so short titles stay compact instead of reserving a 100-char block.
+  const isTruncated = result.content.length > PREVIEW_MAX;
+  const preview = isTruncated ? `${result.content.slice(0, PREVIEW_MAX)}…` : result.content;
 
   const invalidate = () =>
     invalidatePath(qc, `/api/scripts/${scriptId}/sessions`, `/api/scripts/${scriptId}/tray`);
@@ -1780,9 +1799,26 @@ function ResultRow({
             open && "mt-[3px] rotate-90",
           )}
         />
-        <span className={cn("min-w-0 flex-1 text-[12.5px] leading-snug font-medium", !open && "truncate")}>
-          {open ? result.content : preview}
-        </span>
+        {!open && isTruncated ? (
+          // Collapsed + over 100 chars: show the ellipsised preview with a tooltip carrying the full
+          // title. The tooltip only exists when the text is actually truncated.
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="min-w-0 flex-1 truncate text-[12.5px] leading-snug font-medium">
+                  {preview}
+                </span>
+              }
+            />
+            <TooltipContent side="top" className="max-w-sm whitespace-normal">
+              {result.content}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className={cn("min-w-0 flex-1 text-[12.5px] leading-snug font-medium", !open && "truncate")}>
+            {open ? result.content : preview}
+          </span>
+        )}
         <span className={cn("shrink-0 text-[10px] text-faint tabular-nums", open && "mt-[3px]")}>
           {result.content.length}
         </span>
