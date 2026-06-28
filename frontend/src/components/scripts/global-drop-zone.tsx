@@ -17,7 +17,7 @@ const MAX_BYTES = 20 * 1024 * 1024;
  */
 export function GlobalDropZone() {
   const qc = useQueryClient();
-  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded } = useWorkspace();
+  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript } = useWorkspace();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   // dragenter/leave fire per element — count depth so moving across children doesn't flicker the overlay.
@@ -68,7 +68,11 @@ export function GlobalDropZone() {
         const project = await createProjectFromUpload(file, activeWorkspaceId);
         await invalidatePath(qc, "/api/script-projects", "/api/scripts");
         setProjectExpanded(project.id, true);
-        if (project.originalScriptId) setActiveScriptId(project.originalScriptId);
+        if (project.originalScriptId) {
+          setActiveScriptId(project.originalScriptId);
+          // Default the new source to "use as context" (checked) so generation isn't blocked.
+          selectBatchScript(project.originalScriptId);
+        }
         toast.success("Project created");
       } catch {
         toast.error("Upload failed");
@@ -87,7 +91,7 @@ export function GlobalDropZone() {
       window.removeEventListener("dragleave", onLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [qc, activeWorkspaceId, setActiveScriptId, setProjectExpanded]);
+  }, [qc, activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript]);
 
   if (!dragging && !busy) return null;
 
