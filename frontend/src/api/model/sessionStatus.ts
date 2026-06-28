@@ -13,4 +13,5 @@ export const SessionStatus = {
   Streaming: 'Streaming',
   Completed: 'Completed',
   Failed: 'Failed',
+  Waiting: 'Waiting',
 } as const;

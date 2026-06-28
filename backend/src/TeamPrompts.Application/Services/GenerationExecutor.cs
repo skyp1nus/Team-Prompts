@@ -37,7 +37,25 @@ public sealed class GenerationExecutor(
 
         var promptName = session.Prompt?.Name ?? "prompt";
 
-        var scriptId = session.ScriptId;
+        // SignalR target: clients subscribe to the ORIGINAL script's group, but a summary-dependent session
+        // runs against the Summary script — notify the original's group so its canvas updates live. (Only
+        // used for notifier targeting; the DB writes/metadata use the real session.ScriptId.)
+        var scriptId = session.Script.Kind == ScriptKind.Summary && session.Script.SourceScriptId is { } src
+            ? src
+            : session.ScriptId;
+
+        // A summary-dependent prompt is chained to run AFTER its Summary script. The variant job always
+        // "succeeds" (it swallows its own errors), so the continuation fires even when the Summary failed —
+        // guard here so we never generate against an empty/failed Summary.
+        if (session.Script.Kind == ScriptKind.Summary && session.Script.VariantStatus != SessionStatus.Completed)
+        {
+            session.Status = SessionStatus.Failed;
+            session.Error = "The Summary this prompt depends on didn’t finish generating.";
+            await db.SaveChangesAsync(ct);
+            await notifier.SessionStatusChanged(scriptId, sessionId, nameof(SessionStatus.Failed), session.Error, ct);
+            return;
+        }
+
         try
         {
             session.Status = SessionStatus.Streaming;

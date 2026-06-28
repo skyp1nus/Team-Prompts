@@ -104,6 +104,7 @@ type ScriptProjectRec = {
   original: ScriptDto;
   variants: ScriptDto[];
   keywords?: ScriptDto | null;
+  summary?: ScriptDto | null;
 };
 
 /** Build a full ScriptDto (mock) with all the project/variant fields the rail reads. */
@@ -159,6 +160,8 @@ function session(
   count: number,
   favIdx: number[] = [],
   hiIdx: number[] = [],
+  isSummarySource = false,
+  status: SessionWithResultsDto["session"]["status"] = "Completed",
 ): SessionWithResultsDto {
   const id = uid("s");
   return {
@@ -170,16 +173,18 @@ function session(
       promptVersionId: prompt.mainVersionId ?? prompt.versions[0].id,
       promptName: prompt.name,
       model,
-      status: "Completed",
+      status,
       error: null,
       createdBy: ref("Mara A."),
       createdAt: iso(1),
-      completedAt: iso(1),
+      completedAt: status === "Completed" ? iso(1) : null,
       promptVersionNumber: prompt.versions.length,
       isMainVersion: true,
       promptVersionNote: null,
+      isSummarySource,
     },
-    results: makeResults(id, prompt.pool, count, favIdx, hiIdx),
+    // A Waiting/Queued session hasn't produced anything yet.
+    results: status === "Completed" ? makeResults(id, prompt.pool, count, favIdx, hiIdx) : [],
   };
 }
 
@@ -218,13 +223,32 @@ function buildStore() {
     ]),
     prompt(
       "p5",
-      "Condense to a вижимка",
+      "Condense to вижимка",
       "titles",
       WS_GENERAL,
       [
         ["v1", null, "Mara A.", 9, "Initial draft", "Condense this video script into a tight ~150-word summary (вижимка) that keeps the key beats and the hook. Plain prose, ready to record.", true],
       ],
-      "ScriptTransform",
+      "Summary", // the workspace's (only/top) Summary prompt → auto-resolves as the master mind map
+    ),
+    prompt(
+      "p6",
+      "Hooks from the Summary",
+      "titles",
+      WS_GENERAL,
+      [
+        ["v1", null, "Mara A.", 4, "Initial draft", "From the Summary script, write 5 short opening hooks that tee up the video.", true],
+      ],
+      "MainScripts",
+      true, // Summary tag → runs against the project's Summary script (the Summary branch)
+    ),
+    prompt(
+      "p7",
+      "Energetic rewrite",
+      "titles",
+      WS_GENERAL,
+      [["v1", null, "Mara A.", 3, "Initial draft", "Rewrite the script with high energy.", true]],
+      "Summary", // a non-master Summary-KIND prompt → also chained to the Summary node on the canvas
     ),
   ];
 
@@ -264,6 +288,21 @@ function buildStore() {
     createdAt: iso(0),
     updatedAt: iso(0),
   });
+  // The project's Summary script — the master Summary prompt's output (the mind-map anchor).
+  const prSummary = scriptDtoFull({
+    id: "prsum1",
+    name: "Summary",
+    projectId: "pr1",
+    kind: "Summary",
+    sourceScriptId: "prsc1",
+    sourcePromptVersionId: "p5v1",
+    model: "openai/gpt-5",
+    variantStatus: "Completed",
+    extractedText:
+      "Mind map: a calm, budget-aware desk setup in three beats — start with the desk + chair, then cable management and lighting, finishing with the upgrades worth the money. Keeps the hook and the budget order.",
+    createdAt: iso(1),
+    updatedAt: iso(1),
+  });
   // Every script lives in a project now — wrap each seed script in its own single-script project.
   const wrapProject = (s: ScriptRec, pid: string): ScriptProjectRec => ({
     id: pid,
@@ -299,11 +338,19 @@ function buildStore() {
       updatedAt: iso(0),
       original: prOriginal,
       variants: [prVarBusy, prVarDone],
+      summary: prSummary,
     },
     ...scripts.map((s, i) => wrapProject(s, `wp${i + 1}`)),
   ];
 
   const sessionsByScript: Record<string, SessionWithResultsDto[]> = {
+    // The Desk Setup project's Original — main lanes + one Summary-branch lane (a summary-tagged prompt).
+    prsc1: [
+      session("prsc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1]),
+      session("prsc1", prompts[1], "openai/gpt-5", 4, []),
+      session("prsc1", prompts[5], "openai/gpt-5", 5, [], [], true), // p6 — tagged → Summary branch (done)
+      session("prsc1", prompts[6], "anthropic/claude-3.7-sonnet", 0, [], [], true, "Waiting"), // p7 — Summary KIND, parked Waiting
+    ],
     sc1: [
       // Three runs of the same prompt+model → shows the horizontal "chain" layout (rope-linked runs).
       session("sc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1, 3]),
@@ -357,7 +404,8 @@ function prompt(
   kind: "titles" | "desc",
   workspaceId: string,
   vs: [string, string | null, string, number, string, string, boolean][],
-  promptKind: PromptKind = "Metadata",
+  promptKind: PromptKind = "MainScripts",
+  useSummarySource = false,
 ): PromptRec {
   const versions = vs.map(([vid, parent, author, days, note, content, isMain]) =>
     version(id, `${id}${vid}`, parent ? `${id}${parent}` : null, author, days, note, content, isMain),
@@ -375,6 +423,7 @@ function prompt(
     updatedAt: iso(1),
     versions,
     useKeywords: false,
+    useSummarySource,
   };
 }
 
@@ -421,6 +470,7 @@ function listItem(p: PromptRec): PromptListItemDto {
     versionCount: p.versions.length,
     kind: p.kind,
     useKeywords: p.useKeywords,
+    useSummarySource: p.useSummarySource,
   };
 }
 
@@ -448,6 +498,7 @@ function projectDto(p: ScriptProjectRec): ScriptProjectDto {
     original: p.original,
     variants: p.variants,
     keywords: p.keywords ?? null,
+    summary: p.summary ?? null,
     createdBy: p.createdBy,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -638,6 +689,24 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
     }
     return reply(pr ? projectDto(pr) : {}, 150);
   }
+  mm = m(/^\/api\/script-projects\/([^/]+)\/summary\/regenerate$/);
+  if (mm && method === "POST") {
+    const pr = store.projects.find((x) => x.id === mm![1]);
+    if (!pr) return reply(null);
+    pr.summary = scriptDtoFull({
+      id: pr.summary?.id ?? uid("prsum"),
+      name: "Summary",
+      projectId: pr.id,
+      kind: "Summary",
+      sourceScriptId: pr.originalScriptId,
+      model: defaultModel(),
+      variantStatus: "Completed",
+      extractedText: "Freshly regenerated mock mind-map вижимка of the source script.",
+      createdAt: iso(0),
+      updatedAt: iso(0),
+    });
+    return reply<ScriptDto>(pr.summary, 250);
+  }
   mm = m(/^\/api\/script-projects\/([^/]+)$/);
   if (mm && method === "GET") {
     const pr = store.projects.find((x) => x.id === mm![1]);
@@ -669,7 +738,7 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
       id,
       name: String(body.name ?? "Untitled"),
       pool: /descr/i.test(String(body.name ?? "")) ? "desc" : "titles",
-      kind: (body.kind as PromptKind) ?? "Metadata",
+      kind: (body.kind as PromptKind) ?? "MainScripts",
       workspaceId: String(body.workspaceId ?? WS_GENERAL),
       mainVersionId: vId,
       createdBy: ref("Mara A."),
@@ -677,6 +746,7 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
       updatedAt: iso(0),
       versions: [version(id, vId, null, "Mara A.", 0, "Created prompt", String(body.content ?? ""), true)],
       useKeywords: Boolean(body.useKeywords),
+      useSummarySource: Boolean(body.useSummarySource),
     };
     store.prompts.push(rec);
     return reply(listItem(rec), 200);
@@ -716,7 +786,11 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
   }
   if (mm && method === "PUT") {
     const p = store.prompts.find((x) => x.id === mm![1]);
-    if (p && body.name) p.name = String(body.name);
+    if (p) {
+      if (body.name) p.name = String(body.name);
+      if (typeof body.useKeywords === "boolean") p.useKeywords = body.useKeywords;
+      if (typeof body.useSummarySource === "boolean") p.useSummarySource = body.useSummarySource;
+    }
     return reply({}, 150);
   }
 

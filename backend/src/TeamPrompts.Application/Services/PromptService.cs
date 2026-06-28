@@ -42,14 +42,14 @@ public sealed class PromptService(
             .Select(p => new
             {
                 p.Id, p.Name, p.MainVersionId, p.CreatedByUserId, p.CreatedAt, p.UpdatedAt,
-                VersionCount = p.Versions.Count, p.Kind, p.UseKeywords,
+                VersionCount = p.Versions.Count, p.Kind, p.UseKeywords, p.UseSummarySource,
             })
             .ToListAsync(ct);
 
         var dir = await users.GetAsync(rows.Select(r => r.CreatedByUserId), ct);
         return rows.Select(r => new PromptListItemDto(
             r.Id, r.Name, r.MainVersionId, Attribution.Of(dir, r.CreatedByUserId),
-            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind, r.UseKeywords)).ToList();
+            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind, r.UseKeywords, r.UseSummarySource)).ToList();
     }
 
     public async Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default)
@@ -72,7 +72,7 @@ public sealed class PromptService(
 
         return new PromptDetailDto(prompt.Id, prompt.Name, prompt.MainVersionId,
             Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions,
-            prompt.Kind, prompt.UseKeywords);
+            prompt.Kind, prompt.UseKeywords, prompt.UseSummarySource);
     }
 
     public async Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default)
@@ -93,6 +93,7 @@ public sealed class PromptService(
             Name = req.Name.Trim(),
             Kind = req.Kind,
             UseKeywords = req.UseKeywords,
+            UseSummarySource = req.UseSummarySource,
             CreatedByUserId = userId,
             SortOrder = minOrder - 1,
         };
@@ -127,6 +128,8 @@ public sealed class PromptService(
         prompt.Name = req.Name.Trim();
         if (req.UseKeywords is { } useKeywords)
             prompt.UseKeywords = useKeywords;
+        if (req.UseSummarySource is { } useSummarySource)
+            prompt.UseSummarySource = useSummarySource;
         await db.SaveChangesAsync(ct);
         return (await GetAsync(id, ct))!;
     }

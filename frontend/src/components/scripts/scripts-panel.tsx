@@ -126,7 +126,8 @@ export function ScriptsPanel() {
 
 function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDto; expanded: boolean }) {
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, setProjectExpanded } = useWorkspace();
+  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
+    useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
   const [genOpen, setGenOpen] = useState(false);
 
@@ -154,6 +155,10 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
       { id: project.id },
       {
         onSuccess: async () => {
+          // Drop the deleted project's original from the batch selection + active view, so its (now
+          // detached) script id never lingers checked and re-triggers a generation on the next run.
+          const orig = project.originalScriptId;
+          if (orig && batchScriptIds.includes(orig)) toggleBatchScript(orig);
           if (activeScriptId) setActiveScriptId(null);
           await invalidatePath(qc, "/api/script-projects", "/api/scripts");
           toast.success("Project deleted");

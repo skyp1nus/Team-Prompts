@@ -375,10 +375,13 @@ public sealed class ScriptProjectService(
             .Select(s => ScriptService.ToDto(s, dir))
             .ToList();
         var keywords = all.FirstOrDefault(s => s.Kind == ScriptKind.Keywords);
+        // The project's Summary script (the mind-map anchor), if the master Summary has produced one.
+        var summary = all.FirstOrDefault(s => s.Kind == ScriptKind.Summary);
         return new ScriptProjectDto(
             project.Id, project.WorkspaceId, project.Name, project.OriginalScriptId, project.SortOrder,
             original is null ? null : ScriptService.ToDto(original, dir), variants,
             keywords is null ? null : ScriptService.ToDto(keywords, dir),
-            Attribution.Of(dir, project.CreatedByUserId), project.CreatedAt, project.UpdatedAt);
+            Attribution.Of(dir, project.CreatedByUserId), project.CreatedAt, project.UpdatedAt,
+            summary is null ? null : ScriptService.ToDto(summary, dir));
     }
 }

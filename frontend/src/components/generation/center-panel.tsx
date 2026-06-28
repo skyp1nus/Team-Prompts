@@ -6,12 +6,15 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
 import { useGetApiPrompts } from "@/api/endpoints/prompts/prompts";
+import { useGetApiScriptProjectsId } from "@/api/endpoints/script-projects/script-projects";
 import {
+  getGetApiScriptsIdQueryKey,
   getGetApiScriptsQueryKey,
   useDeleteApiScriptsIdSessions,
+  useGetApiScriptsId,
   useGetApiScriptsIdSessions,
 } from "@/api/endpoints/scripts/scripts";
-import type { SessionWithResultsDto } from "@/api/model";
+import { PromptKind, type ScriptDto, SessionStatus, type SessionWithResultsDto } from "@/api/model";
 import { ColumnsView } from "@/components/generation/columns-view";
 import { GridView } from "@/components/generation/grid-view";
 import { MapView, type Group } from "@/components/generation/map-view";
@@ -43,6 +46,8 @@ export function CenterPanel() {
     setView,
     showHighlightsOnly,
     setShowHighlightsOnly,
+    focusSummaryOnly,
+    setFocusSummaryOnly,
   } = useWorkspace();
   const { subscribeScript } = useGenerationStream();
   const gen = usePostApiGeneration();
@@ -52,6 +57,26 @@ export function CenterPanel() {
   const { data: sessions, isLoading } = useGetApiScriptsIdSessions(activeScriptId ?? "", {
     query: { enabled: !!activeScriptId },
   });
+
+  // Resolve the active script's project so we can surface its Summary (the mind-map anchor). Poll while
+  // the Summary is still generating — the variant pipeline doesn't stream over SignalR, so refetch to
+  // reflect completion. (Two cheap dependent reads; only the active script, only when it has a project.)
+  const { data: activeScript } = useGetApiScriptsId(activeScriptId ?? "", {
+    query: { enabled: !!activeScriptId },
+  });
+  const projectId = (activeScript as ScriptDto | undefined)?.projectId ?? null;
+  const { data: project } = useGetApiScriptProjectsId(projectId ?? "", {
+    query: {
+      enabled: !!projectId,
+      refetchInterval: (q) => {
+        const s = (q.state.data as { summary?: ScriptDto | null } | undefined)?.summary;
+        return s && (s.variantStatus === SessionStatus.Queued || s.variantStatus === SessionStatus.Streaming)
+          ? 2500
+          : false;
+      },
+    },
+  });
+  const summary = ((project as { summary?: ScriptDto | null } | undefined)?.summary ?? null) as ScriptDto | null;
 
   // The team-wide prompt order (right Prompt Library) drives the top-to-bottom lane order of the map.
   // The list comes back already sorted by SortOrder, so its array index IS the rank.
@@ -64,6 +89,19 @@ export function CenterPanel() {
     (promptList ?? []).forEach((p, i) => m.set(p.id, i));
     return m;
   }, [promptList]);
+
+  // Every Summary-related prompt — a Summary KIND prompt OR one carrying the Summary tag — gets chained
+  // to the Summary node on the canvas (placed in its branch). The session marker (isSummarySource) covers
+  // tagged prompts that ran against the Summary script; this also catches Summary-kind prompts.
+  const summaryPromptIds = useMemo(
+    () =>
+      new Set(
+        (promptList ?? [])
+          .filter((p) => p.kind === PromptKind.Summary || p.useSummarySource)
+          .map((p) => p.id),
+      ),
+    [promptList],
+  );
 
   useEffect(() => {
     if (activeScriptId) subscribeScript(activeScriptId);
@@ -79,7 +117,16 @@ export function CenterPanel() {
   ].filter(Boolean) as string[];
   const canGenerate = missing.length === 0 && !generating;
 
-  const groups = useMemo(() => groupByPrompt(sessions ?? [], promptOrder), [sessions, promptOrder]);
+  const allGroups = useMemo(
+    () => groupByPrompt(sessions ?? [], promptOrder, summaryPromptIds),
+    [sessions, promptOrder, summaryPromptIds],
+  );
+  // Left-side "Focus" narrows the center to just the Summary branch (summary-tagged lanes). Only takes
+  // effect when the active script actually has a Summary — otherwise there'd be no way to un-focus.
+  const groups = useMemo(
+    () => (focusSummaryOnly && summary ? allGroups.filter((g) => g.segment === "summary") : allGroups),
+    [allGroups, focusSummaryOnly, summary],
+  );
   const hasResults = groups.length > 0;
 
   const onGenerate = async () => {
@@ -97,7 +144,14 @@ export function CenterPanel() {
       models.map((model) => gen.mutateAsync({ data: { scriptIds, prompts, model, variantCount: null } })),
     );
     setGenerating(false);
-    if (activeScriptId) invalidatePath(qc, `/api/scripts/${activeScriptId}/sessions`);
+    // Refetch sessions (the new nodes) AND the project — the master Summary may have just been created,
+    // and its node only shows once the project query picks it up (otherwise it appears only after a reload).
+    if (activeScriptId) {
+      invalidatePath(qc, `/api/scripts/${activeScriptId}/sessions`, "/api/script-projects");
+      // The script may have just been wrapped in a project (orphan → project) — refetch it (exact key, so
+      // the shared canvas-layout query isn't swept) so its new projectId surfaces the Summary node.
+      qc.invalidateQueries({ queryKey: getGetApiScriptsIdQueryKey(activeScriptId) });
+    }
     const ok = settled.filter((r) => r.status === "fulfilled").length;
     if (ok === 0) toast.error("Could not start generation");
     else if (ok < settled.length) toast.warning(`Started ${ok} of ${settled.length} runs`);
@@ -131,6 +185,25 @@ export function CenterPanel() {
         {/* left: highlights filter + clear the whole canvas. On the Map the highlights toggle lives in
             the canvas controls menu instead, so it isn't duplicated here. */}
         <div className="flex flex-1 basis-0 items-center gap-2">
+          {summary && (
+            <button
+              onClick={() => setFocusSummaryOnly(!focusSummaryOnly)}
+              title={
+                focusSummaryOnly
+                  ? "Showing only the Summary branch — click to show everything"
+                  : "Focus on the Summary branch (the mind-map node + its prompts)"
+              }
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12.5px] font-medium transition-colors",
+                focusSummaryOnly
+                  ? "border-violet-400/70 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                  : "border-border text-muted-foreground hover:border-violet-400/50 hover:text-violet-600",
+              )}
+            >
+              <Network className="size-3.5" />
+              Summary
+            </button>
+          )}
           {hasResults && view !== "map" && (
             <button
               onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
@@ -219,6 +292,22 @@ export function CenterPanel() {
             <Skeleton className="h-40 w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
+        ) : view === "map" ? (
+          // The Map shows the Summary as a node even before any lane has results.
+          hasResults || summary ? (
+            <MapView
+              key={activeScriptId}
+              groups={groups}
+              scriptId={activeScriptId}
+              summary={summary}
+              projectId={projectId}
+            />
+          ) : (
+            <CenterEmpty
+              title="No results yet"
+              body="Pick a script on the left and one or more prompts on the right, choose which AI models to run, then hit Generate."
+            />
+          )
         ) : !hasResults ? (
           <CenterEmpty
             title="No results yet"
@@ -226,10 +315,8 @@ export function CenterPanel() {
           />
         ) : view === "columns" ? (
           <ColumnsView groups={groups} scriptId={activeScriptId} />
-        ) : view === "grid" ? (
-          <GridView groups={groups} scriptId={activeScriptId} />
         ) : (
-          <MapView key={activeScriptId} groups={groups} scriptId={activeScriptId} />
+          <GridView groups={groups} scriptId={activeScriptId} />
         )}
       </div>
 
@@ -256,6 +343,8 @@ function groupByPrompt(
   sessions: SessionWithResultsDto[],
   /** promptId → rank from the Prompt Library order (lower = higher up). Drives the lane order. */
   promptOrder: Map<string, number>,
+  /** prompts related to the Summary (Summary kind OR summary-tagged) — chained to the Summary node. */
+  summaryPromptIds: Set<string>,
 ): Group[] {
   // Keep EVERY run — the map groups them by model into one block so each "Generate more" shows as a
   // separate, labelled generation. Within a prompt: models by first appearance, runs chronological,
@@ -270,9 +359,17 @@ function groupByPrompt(
     const pid = s.session.promptId;
     if (!groupIndex.has(pid)) {
       groupIndex.set(pid, groups.length);
-      groups.push({ promptId: pid, promptName: s.session.promptName, sessions: [] });
+      groups.push({
+        promptId: pid,
+        promptName: s.session.promptName,
+        sessions: [],
+        // Summary-related lanes (ran against the Summary script, OR a Summary-kind / summary-tagged
+        // prompt) live in the Summary branch and chain to the Summary node.
+        segment: s.session.isSummarySource || summaryPromptIds.has(pid) ? "summary" : "main",
+      });
       modelBuckets.set(pid, new Map());
     }
+    if (s.session.isSummarySource || summaryPromptIds.has(pid)) groups[groupIndex.get(pid)!].segment = "summary";
     const models = modelBuckets.get(pid)!;
     if (!models.has(s.session.model)) models.set(s.session.model, []);
     models.get(s.session.model)!.push(s);
@@ -280,12 +377,13 @@ function groupByPrompt(
   for (const [pid, idx] of groupIndex) {
     groups[idx].sessions = [...modelBuckets.get(pid)!.values()].flat();
   }
-  // Reorder lanes by the Prompt Library rank. Prompts with no rank (e.g. the prompt was deleted but
-  // its past runs remain) sink to the bottom, keeping their stable first-appearance order among
-  // themselves. Array#sort is stable, so the first-appearance index is the natural tiebreak.
+  // Order lanes: the Summary branch first (always-first), then by the Prompt Library rank. Prompts with
+  // no rank (e.g. deleted but past runs remain) sink to the bottom, keeping their stable first-appearance
+  // order. Array#sort is stable, so the first-appearance index is the natural tiebreak.
+  const segRank = (g: Group) => (g.segment === "summary" ? 0 : 1);
   const rankOf = (g: Group) => promptOrder.get(g.promptId) ?? Number.MAX_SAFE_INTEGER;
   return groups
     .map((g, i) => ({ g, i }))
-    .sort((a, b) => rankOf(a.g) - rankOf(b.g) || a.i - b.i)
+    .sort((a, b) => segRank(a.g) - segRank(b.g) || rankOf(a.g) - rankOf(b.g) || a.i - b.i)
     .map((x) => x.g);
 }

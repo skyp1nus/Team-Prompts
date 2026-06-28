@@ -39,6 +39,7 @@ public sealed class GenerationService(
     IUserDirectory users,
     IJobScheduler scheduler,
     IActivityLogger activity,
+    ISummaryService summaries,
     ILogger<GenerationService> logger) : IGenerationService
 {
     public async Task<GenerationRunDto> CreateAsync(CreateGenerationRequest req, CancellationToken ct = default)
@@ -55,7 +56,7 @@ public sealed class GenerationService(
             throw new NotFoundException("One or more scripts were not found.");
 
         var prompts = await db.Prompts.Where(p => promptIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.MainVersionId, VersionIds = p.Versions.Select(v => v.Id).ToList() })
+            .Select(p => new { p.Id, p.MainVersionId, p.Kind, p.UseSummarySource, VersionIds = p.Versions.Select(v => v.Id).ToList() })
             .ToListAsync(ct);
         if (prompts.Count != promptIds.Count)
             throw new NotFoundException("One or more prompts were not found.");
@@ -89,6 +90,11 @@ public sealed class GenerationService(
             : settings?.DefaultModel ?? GenerationDefaults.FallbackModel;
         var userId = currentUser.UserId ?? string.Empty;
 
+        // Auto-run the mind map: ensure every selected Original's project has its master Summary script
+        // (idempotent — only the first generation kicks one off). The plan gives, per script, the Summary
+        // script id + whether it's ready now or the dependent must park as Waiting until it finishes.
+        var summaryPlans = await summaries.EnsureForScriptsAsync(scriptIds, model, ct);
+
         GenerationRun? run = null;
         if (scriptIds.Count * promptIds.Count > 1)
         {
@@ -96,26 +102,60 @@ public sealed class GenerationService(
             db.GenerationRuns.Add(run);
         }
 
+        // Summary-related prompts (Summary KIND or summary-tagged) run AGAINST the Summary script. Every
+        // session is created up-front so its node shows immediately; the summary-dependent ones are parked
+        // Waiting (not enqueued) until the Summary finishes, then its executor releases them. Everything
+        // else runs against the Original right away.
         var sessions = new List<GenerationSession>();
+        var waitingSummaryIds = new HashSet<Guid>();
         foreach (var sid in scriptIds)
         foreach (var pid in promptIds)
         {
+            var p = promptById[pid];
+            var summaryRelated = p.UseSummarySource || p.Kind == PromptKind.Summary;
+            var scriptForSession = sid;
+            var status = SessionStatus.Queued;
+            // A summary-related prompt runs against the project's Summary (parked Waiting until it's ready).
+            // If there's no resolvable Summary (e.g. the workspace has no Summary prompt at all), fall back
+            // to running it against the script itself — never fail the whole generation.
+            if (summaryRelated && summaryPlans.TryGetValue(sid, out var plan))
+            {
+                scriptForSession = plan.SummaryScriptId;
+                if (!plan.IsCompleted)
+                {
+                    status = SessionStatus.Waiting;
+                    waitingSummaryIds.Add(plan.SummaryScriptId);
+                }
+            }
+
             sessions.Add(new GenerationSession
             {
                 RunId = run?.Id,
-                ScriptId = sid,
+                ScriptId = scriptForSession,
                 PromptId = pid,
                 PromptVersionId = versionByPrompt[pid],
                 Model = model,
-                Status = SessionStatus.Queued,
+                Status = status,
                 CreatedByUserId = userId,
             });
         }
         db.GenerationSessions.AddRange(sessions);
         await db.SaveChangesAsync(ct);
 
+        // Fire everything that's ready now; Waiting sessions are released by the Summary's executor.
         foreach (var s in sessions)
-            scheduler.EnqueueGeneration(s.Id);
+            if (s.Status == SessionStatus.Queued)
+                scheduler.EnqueueGeneration(s.Id);
+
+        // Race-safety: if a Summary already finished between the plan snapshot and the commit above, release
+        // (or fail) its Waiting dependents here — the executor's own pass may have missed them.
+        foreach (var summaryId in waitingSummaryIds)
+        {
+            var st = await db.Scripts.AsNoTracking().Where(x => x.Id == summaryId)
+                .Select(x => x.VariantStatus).FirstOrDefaultAsync(ct);
+            if (st == SessionStatus.Completed) await summaries.DispatchDependentsAsync(summaryId, ct);
+            else if (st == SessionStatus.Failed) await summaries.FailDependentsAsync(summaryId, "The Summary didn’t finish generating.", ct);
+        }
 
         await activity.LogAsync(new ActivityLogEntry(
             ActivityEventType.GenerationStarted,
@@ -172,8 +212,20 @@ public sealed class GenerationService(
 
     public async Task<IReadOnlyList<SessionWithResultsDto>> GetScriptSessionsAsync(Guid scriptId, CancellationToken ct = default)
     {
+        // Summary-tagged prompts ran against this project's Summary script, but they belong on THIS
+        // original's map — as the Summary branch. Pull both the original's own sessions and its Summary
+        // script's sessions; MapSession flags the latter via IsSummarySource (Script.Kind == Summary).
+        var projectId = await db.Scripts.AsNoTracking()
+            .Where(s => s.Id == scriptId).Select(s => s.ProjectId).FirstOrDefaultAsync(ct);
+        var summaryId = projectId is { } pid
+            ? await db.Scripts.AsNoTracking()
+                .Where(s => s.ProjectId == pid && s.Kind == ScriptKind.Summary)
+                .Select(s => (Guid?)s.Id).FirstOrDefaultAsync(ct)
+            : null;
+
         var sessions = await db.GenerationSessions.AsNoTracking()
-            .Where(s => s.ScriptId == scriptId)
+            .Where(s => s.ScriptId == scriptId || (summaryId != null && s.ScriptId == summaryId))
+            .Include(s => s.Script)
             .Include(s => s.Prompt)
             .Include(s => s.Results).ThenInclude(r => r.Favorites)
             .Include(s => s.Results).ThenInclude(r => r.CopyEvents)
@@ -197,6 +249,7 @@ public sealed class GenerationService(
     {
         var s = await db.GenerationSessions.AsNoTracking()
             .Where(x => x.Id == sessionId)
+            .Include(x => x.Script)
             .Include(x => x.Prompt)
             .Include(x => x.Results).ThenInclude(r => r.Favorites)
             .Include(x => x.Results).ThenInclude(r => r.CopyEvents)
@@ -402,6 +455,7 @@ public sealed class GenerationService(
     {
         var sessions = await db.GenerationSessions.AsNoTracking()
             .Where(s => ids.Contains(s.Id))
+            .Include(s => s.Script)
             .Include(s => s.Prompt)
             .ToListAsync(ct);
         var dir = await users.GetAsync(sessions.Select(s => s.CreatedByUserId).Distinct(), ct);
@@ -448,7 +502,7 @@ public sealed class GenerationService(
         var v = versions.GetValueOrDefault(s.PromptVersionId);
         return new(s.Id, s.RunId, s.ScriptId, s.PromptId, s.PromptVersionId, s.Prompt?.Name ?? string.Empty,
             s.Model, s.Status, s.Error, Attribution.Of(dir, s.CreatedByUserId), s.CreatedAt, s.CompletedAt,
-            v.Number, v.IsMain, v.Note);
+            v.Number, v.IsMain, v.Note, s.Script?.Kind == ScriptKind.Summary);
     }
 
     private static GenerationResultDto MapResult(GenerationResult r, string? me, IReadOnlyDictionary<string, UserRef> dir) =>

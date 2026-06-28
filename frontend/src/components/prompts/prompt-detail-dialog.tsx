@@ -13,8 +13,9 @@ import {
   useGetApiPromptsId,
   usePostApiPromptsIdVersions,
   usePostApiPromptsIdVersionsVersionIdPromote,
+  usePutApiPromptsId,
 } from "@/api/endpoints/prompts/prompts";
-import type { PromptVersionDto } from "@/api/model";
+import { PromptKind, type PromptVersionDto } from "@/api/model";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -80,6 +81,8 @@ export function PromptDetailDialog({ promptId, open, onOpenChange }: Props) {
           <DetailPanel
             promptId={prompt.id}
             promptName={prompt.name}
+            kind={prompt.kind}
+            useSummarySource={prompt.useSummarySource}
             versions={versions}
             onBranch={(id) => setBranchOf(id)}
             onPicked={() => onOpenChange(false)}
@@ -101,12 +104,16 @@ function vLabel(versions: PromptVersionDto[], id: string | null | undefined) {
 function DetailPanel({
   promptId,
   promptName,
+  kind,
+  useSummarySource,
   versions,
   onBranch,
   onPicked,
 }: {
   promptId: string;
   promptName: string;
+  kind: PromptKind;
+  useSummarySource: boolean;
   versions: PromptVersionDto[];
   onBranch: (versionId: string) => void;
   onPicked: () => void;
@@ -114,7 +121,21 @@ function DetailPanel({
   const qc = useQueryClient();
   const { resolvedTheme } = useTheme();
   const promote = usePostApiPromptsIdVersionsVersionIdPromote();
+  const updatePrompt = usePutApiPromptsId();
   const { selectedPromptIds, togglePrompt, promptVersions, setPromptVersion } = useWorkspace();
+
+  // Toggle a library flag on this prompt. Name is required by the API, so echo the current one.
+  const setFlag = (patch: { useSummarySource?: boolean }, msg: string) =>
+    updatePrompt.mutate(
+      { id: promptId, data: { name: promptName, ...patch } },
+      {
+        onSuccess: async () => {
+          await invalidatePath(qc, "/api/prompts");
+          toast.success(msg);
+        },
+        onError: () => toast.error("Couldn’t update the prompt"),
+      },
+    );
 
   const main = versions.find((v) => v.isMain) ?? versions[versions.length - 1];
   // Which version the next run will use for this prompt: an explicit pin, else the current main.
@@ -170,6 +191,30 @@ function DetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+        {/* library flags — Summary tag + (Summary prompts only) master Summary */}
+        <section>
+          <SectionTitle>Summary settings</SectionTitle>
+          <div className="flex flex-wrap gap-1.5">
+            <MiniBtn
+              accent={useSummarySource}
+              disabled={updatePrompt.isPending}
+              onClick={() =>
+                setFlag(
+                  { useSummarySource: !useSummarySource },
+                  useSummarySource ? "Summary tag removed" : "Tagged — runs against the Summary",
+                )
+              }
+            >
+              {useSummarySource ? "✓ Summary tag" : "Tag: run against Summary"}
+            </MiniBtn>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            {kind === PromptKind.Summary
+              ? "This is a Summary prompt — the workspace's top one auto-runs on each script's first generation to build its mind map (no setup). The Summary tag routes a prompt's runs to that Summary script."
+              : "Tag this prompt to run it against the project's Summary script (the Summary branch) instead of the Original."}
+          </p>
+        </section>
+
         {/* main version */}
         {main && (
           <section>

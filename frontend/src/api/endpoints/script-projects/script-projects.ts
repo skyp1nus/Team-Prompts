@@ -741,3 +741,58 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getDeleteApiScriptProjectsIdVariantsVariantIdMutationOptions(options), queryClient);
     }
+    export const postApiScriptProjectsIdSummaryRegenerate = (
+    id: string,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<ScriptDto>(
+      {url: `/api/script-projects/${id}/summary/regenerate`, method: 'POST', signal
+    },
+      options);
+    }
+
+
+
+export const getPostApiScriptProjectsIdSummaryRegenerateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['postApiScriptProjectsIdSummaryRegenerate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  postApiScriptProjectsIdSummaryRegenerate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostApiScriptProjectsIdSummaryRegenerateMutationResult = NonNullable<Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>>
+
+    export type PostApiScriptProjectsIdSummaryRegenerateMutationError = ErrorType<unknown>
+
+    export const usePostApiScriptProjectsIdSummaryRegenerate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof postApiScriptProjectsIdSummaryRegenerate>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getPostApiScriptProjectsIdSummaryRegenerateMutationOptions(options), queryClient);
+    }

@@ -12,4 +12,5 @@ export const ScriptKind = {
   Original: 'Original',
   Variant: 'Variant',
   Keywords: 'Keywords',
+  Summary: 'Summary',
 } as const;

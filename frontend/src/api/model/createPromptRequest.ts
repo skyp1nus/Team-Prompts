@@ -12,4 +12,5 @@ export interface CreatePromptRequest {
   content: string;
   kind?: PromptKind;
   useKeywords?: boolean;
+  useSummarySource?: boolean;
 }

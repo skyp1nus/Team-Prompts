@@ -18,4 +18,5 @@ export interface PromptListItemDto {
   versionCount: number;
   kind: PromptKind;
   useKeywords: boolean;
+  useSummarySource: boolean;
 }

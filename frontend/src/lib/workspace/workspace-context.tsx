@@ -68,6 +68,10 @@ type WorkspaceValue = {
   showHighlightsOnly: boolean;
   setShowHighlightsOnly: (v: boolean) => void;
 
+  /** When on, the center shows ONLY the Summary segment (the mind-map branch) for the active script. */
+  focusSummaryOnly: boolean;
+  setFocusSummaryOnly: (v: boolean) => void;
+
   /** Map-only: stack a model's runs vertically (default) or chain them left-to-right with ropes. */
   mapOrientation: MapOrientation;
   setMapOrientation: (o: MapOrientation) => void;
@@ -130,6 +134,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
+  const [focusSummaryOnly, setFocusSummaryOnly] = usePersistedState<boolean>("tp.ws.focusSummary", false);
   const [mapOrientation, setMapOrientation] = usePersistedState<MapOrientation>("tp.ws.mapOrientation", "vertical");
   const [scriptsPanelCollapsed, setScriptsPanelCollapsed] = usePersistedState<boolean>(
     "tp.ws.scriptsCollapsed",
@@ -261,6 +266,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setView,
         showHighlightsOnly,
         setShowHighlightsOnly,
+        focusSummaryOnly,
+        setFocusSummaryOnly,
         mapOrientation,
         setMapOrientation,
         scriptsPanelCollapsed,

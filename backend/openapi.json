@@ -1472,6 +1472,46 @@
         }
       }
     },
+    "/api/script-projects/{id}/summary/regenerate": {
+      "post": {
+        "tags": [
+          "ScriptProjects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/scripts": {
       "get": {
         "tags": [
@@ -2805,6 +2845,10 @@
           "useKeywords": {
             "type": "boolean",
             "default": false
+          },
+          "useSummarySource": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3063,7 +3107,8 @@
           "updatedAt",
           "versions",
           "kind",
-          "useKeywords"
+          "useKeywords",
+          "useSummarySource"
         ],
         "type": "object",
         "properties": {
@@ -3101,13 +3146,16 @@
           },
           "useKeywords": {
             "type": "boolean"
+          },
+          "useSummarySource": {
+            "type": "boolean"
           }
         }
       },
       "PromptKind": {
         "enum": [
-          "Metadata",
-          "ScriptTransform"
+          "MainScripts",
+          "Summary"
         ]
       },
       "PromptListItemDto": {
@@ -3120,7 +3168,8 @@
           "updatedAt",
           "versionCount",
           "kind",
-          "useKeywords"
+          "useKeywords",
+          "useSummarySource"
         ],
         "type": "object",
         "properties": {
@@ -3155,6 +3204,9 @@
             "$ref": "#/components/schemas/PromptKind"
           },
           "useKeywords": {
+            "type": "boolean"
+          },
+          "useSummarySource": {
             "type": "boolean"
           }
         }
@@ -3359,7 +3411,8 @@
         "enum": [
           "Original",
           "Variant",
-          "Keywords"
+          "Keywords",
+          "Summary"
         ]
       },
       "ScriptListItemDto": {
@@ -3487,6 +3540,16 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "nullable": true
+              },
+              {
+                "$ref": "#/components/schemas/ScriptDto"
+              }
+            ]
           }
         }
       },
@@ -3617,6 +3680,10 @@
           "promptVersionNote": {
             "type": "string",
             "nullable": true
+          },
+          "isSummarySource": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3625,7 +3692,8 @@
           "Queued",
           "Streaming",
           "Completed",
-          "Failed"
+          "Failed",
+          "Waiting"
         ]
       },
       "SessionWithResultsDto": {
@@ -3771,6 +3839,10 @@
             "type": "string"
           },
           "useKeywords": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "useSummarySource": {
             "type": "boolean",
             "nullable": true
           }

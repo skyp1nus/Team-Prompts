@@ -11,7 +11,7 @@ namespace TeamPrompts.Api.Controllers;
 [Authorize]
 public sealed class PromptsController(IPromptService prompts) : ControllerBase
 {
-    /// <summary><paramref name="kind"/> filters the library (Metadata vs ScriptTransform); omitted → all.</summary>
+    /// <summary><paramref name="kind"/> filters the library (MainScripts vs Summary); omitted → all.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PromptListItemDto>>> List(
         [FromQuery] Guid? workspaceId, [FromQuery] PromptKind? kind, CancellationToken ct)

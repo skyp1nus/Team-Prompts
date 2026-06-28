@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   Columns3,
   Copy,
   FileText,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Maximize2,
   Minus,
+  Network,
   Plus,
   RotateCcw,
   RotateCw,
@@ -40,6 +42,7 @@ import {
   usePostApiResultsResultIdFavorite,
   usePostApiResultsResultIdHighlight,
 } from "@/api/endpoints/results/results";
+import { usePostApiScriptProjectsIdSummaryRegenerate } from "@/api/endpoints/script-projects/script-projects";
 import {
   getGetApiScriptsIdCanvasQueryKey,
   getGetApiScriptsQueryKey,
@@ -47,7 +50,7 @@ import {
   useGetApiScriptsIdCanvas,
   usePutApiScriptsIdCanvas,
 } from "@/api/endpoints/scripts/scripts";
-import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
+import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type ScriptDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
@@ -58,7 +61,14 @@ import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
 import { type MapOrientation, useWorkspace } from "@/lib/workspace/workspace-context";
 
-export type Group = { promptId: string; promptName: string; sessions: SessionWithResultsDto[] };
+export type Group = {
+  promptId: string;
+  promptName: string;
+  sessions: SessionWithResultsDto[];
+  /** "summary" = a summary-tagged prompt's lane (ran against the Summary script — the Summary branch);
+   *  "main" = a normal lane off the Original. Drives the always-first ordering + the lane's SUMMARY tag. */
+  segment: "summary" | "main";
+};
 
 const MIN_Z = 0.3;
 const MAX_Z = 2.5;
@@ -84,6 +94,7 @@ type Edge = {
 /* ---------- free-form canvas layout ---------- */
 type XY = { x: number; y: number };
 type FlatNode =
+  | { key: string; kind: "summary" }
   | { key: string; kind: "prompt"; group: Group }
   | {
       key: string;
@@ -93,6 +104,10 @@ type FlatNode =
       model: string;
       runs: SessionWithResultsDto[];
     };
+
+/** Colour of the Summary node → its tagged prompts (the branch edges). */
+const SUMMARY_EDGE_COLOR = "#8b5cf6"; // violet-500
+const SUMMARY_W = 380;
 
 /** Layer padding + lane gaps, mirroring the design's flex layout so auto-placed blocks land where
  *  the old flow put them (px-14 / py-3.5, gap-16 lanes, gap-[132px] columns, gap-[34px] stacks). */
@@ -107,9 +122,12 @@ const DRAG_THRESHOLD = 4;
 
 const promptKey = (promptId: string) => `prompt:${promptId}`;
 const colNodeKey = (colId: string) => `col:${colId}`;
+const summaryKeyFor = (scriptId: string) => `summary:${scriptId}`;
 
-function flattenNodes(groups: Group[]): FlatNode[] {
+function flattenNodes(groups: Group[], summaryKey: string | null): FlatNode[] {
   const out: FlatNode[] = [];
+  // The Summary node anchors the branch — render/measure it first so its edges to the tagged prompts route.
+  if (summaryKey) out.push({ key: summaryKey, kind: "summary" });
   for (const g of groups) {
     out.push({ key: promptKey(g.promptId), kind: "prompt", group: g });
     for (const mg of groupModels(g.sessions)) {
@@ -120,26 +138,57 @@ function flattenNodes(groups: Group[]): FlatNode[] {
   return out;
 }
 
-/** Deterministic default grid (used only for blocks with no saved/known position): prompt on the
- *  left of each lane, its model outputs stacked to the right; lanes stacked top-to-bottom. */
-function computeAutoGrid(groups: Group[], sizeOf: (k: string) => { w: number; h: number }): Record<string, XY> {
-  const grid: Record<string, XY> = {};
-  let y = PAD_Y;
-  for (const g of groups) {
-    const pKey = promptKey(g.promptId);
-    const pSize = sizeOf(pKey);
-    grid[pKey] = { x: PAD_X, y };
-    const colX = PAD_X + (pSize.w || PROMPT_W) + COL_GAP_X;
-    let cy = y;
-    for (const mg of groupModels(g.sessions)) {
-      const cKey = colNodeKey(`${g.promptId}::${mg.model}`);
-      grid[cKey] = { x: colX, y: cy };
-      cy += sizeOf(cKey).h + COL_GAP_Y;
-    }
-    const stacked = cy - COL_GAP_Y - y; // total height of the stacked outputs
-    const laneHeight = Math.max(pSize.h, stacked, 0);
-    y += laneHeight + LANE_GAP_Y;
+/** Lay out one prompt lane (prompt card on the left, its model outputs stacked to the right) at the
+ *  given top-left, returning the bottom Y after the lane + gap. */
+function placeLane(
+  grid: Record<string, XY>,
+  g: Group,
+  x: number,
+  y: number,
+  sizeOf: (k: string) => { w: number; h: number },
+): number {
+  const pKey = promptKey(g.promptId);
+  const pSize = sizeOf(pKey);
+  grid[pKey] = { x, y };
+  const colX = x + (pSize.w || PROMPT_W) + COL_GAP_X;
+  let cy = y;
+  for (const mg of groupModels(g.sessions)) {
+    const cKey = colNodeKey(`${g.promptId}::${mg.model}`);
+    grid[cKey] = { x: colX, y: cy };
+    cy += sizeOf(cKey).h + COL_GAP_Y;
   }
+  const stacked = cy - COL_GAP_Y - y;
+  return y + Math.max(pSize.h, stacked, 0) + LANE_GAP_Y;
+}
+
+/** Deterministic default grid (used only for blocks with no saved/known position). The Summary node sits
+ *  top-LEFT; its dependent lanes branch to the RIGHT (each a normal prompt → output, left-to-right) so the
+ *  flow reads Summary → prompt → output. Main lanes stack below at the normal left margin. */
+function computeAutoGrid(
+  groups: Group[],
+  sizeOf: (k: string) => { w: number; h: number },
+  summaryKey: string | null,
+): Record<string, XY> {
+  const grid: Record<string, XY> = {};
+  let summaryBottom = PAD_Y;
+  let branchX = PAD_X;
+  if (summaryKey) {
+    grid[summaryKey] = { x: PAD_X, y: PAD_Y };
+    const sSize = sizeOf(summaryKey);
+    summaryBottom = PAD_Y + sSize.h;
+    branchX = PAD_X + (sSize.w || SUMMARY_W) + COL_GAP_X;
+  }
+
+  // Dependent (Summary-related) lanes branch to the RIGHT of the Summary node, stacked from the top.
+  let by = PAD_Y;
+  const summaryGroups = groups.filter((g) => g.segment === "summary");
+  for (const g of summaryGroups) by = placeLane(grid, g, branchX, by, sizeOf);
+
+  // Main lanes below the whole Summary block, back at the normal left margin.
+  const branchActive = summaryKey || summaryGroups.length > 0;
+  let my = branchActive ? Math.max(summaryBottom, by - LANE_GAP_Y) + LANE_GAP_Y : PAD_Y;
+  for (const g of groups.filter((g) => g.segment !== "summary")) my = placeLane(grid, g, PAD_X, my, sizeOf);
+
   return grid;
 }
 
@@ -149,9 +198,21 @@ function computeAutoGrid(groups: Group[], sizeOf: (k: string) => { w: number; h:
  * Figma-style. Positions are saved per script and shared with the whole team (auto-layout is only the
  * starting arrangement). Provider-coloured bezier edges re-route to follow blocks as they move.
  */
-export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: string }) {
+export function MapView({
+  groups,
+  scriptId,
+  summary,
+  projectId,
+}: {
+  groups: Group[];
+  scriptId: string;
+  /** The project's Summary script (the mind-map anchor node), or null when none exists yet. */
+  summary: ScriptDto | null;
+  projectId: string | null;
+}) {
   const qc = useQueryClient();
   const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly } = useWorkspace();
+  const summaryKey = summary ? summaryKeyFor(scriptId) : null;
   const [menuOpen, setMenuOpen] = useState(true);
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -170,7 +231,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   const saveCanvas = usePutApiScriptsIdCanvas();
   const resetCanvas = useDeleteApiScriptsIdCanvas();
 
-  const nodes = useMemo(() => flattenNodes(groups), [groups]);
+  const nodes = useMemo(() => flattenNodes(groups, summaryKey), [groups, summaryKey]);
   const nodeKeys = useMemo(() => nodes.map((n) => n.key), [nodes]);
   const structuralKey = useMemo(() => nodeKeys.join("|"), [nodeKeys]);
   const serverPos = useMemo(() => {
@@ -241,7 +302,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
     if (!canvasReady) return;
     setPos((prev) => {
       const keySet = new Set(nodeKeys);
-      const grid = computeAutoGrid(groups, sizeOf);
+      const grid = computeAutoGrid(groups, sizeOf, summaryKey);
       const next: Record<string, XY> = {};
       // A removed block is a change even though it never makes it into `next`.
       let changed = Object.keys(prev).some((k) => !keySet.has(k));
@@ -481,7 +542,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
           // effect re-running: setQueryData([]) structurally shares the same [] reference when the
           // canvas was already empty, so serverPos wouldn't change and the effect wouldn't fire —
           // leaving every block stuck hidden.
-          setPos(computeAutoGrid(groups, sizeOf));
+          setPos(computeAutoGrid(groups, sizeOf, summaryKey));
           setReady(true);
           toast.success("Layout reset");
         },
@@ -529,6 +590,35 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
         });
       });
     });
+
+    // Summary node → each dependent prompt (the chain flowing rightward OUT of the Summary).
+    const summaryRoot = layer.querySelector<HTMLElement>("[data-summary]");
+    const sCard = summaryRoot?.querySelector<HTMLElement>("[data-card]");
+    if (sCard) {
+      const sr = sCard.getBoundingClientRect();
+      const ax = (sr.right - base.left) / z; // Summary node RIGHT (source)
+      const ay = (sr.top + sr.height / 2 - base.top) / z;
+      layer.querySelectorAll<HTMLElement>('[data-prompt][data-segment="summary"]').forEach((pr) => {
+        const pid = pr.dataset.prompt!;
+        const card = pr.querySelector<HTMLElement>("[data-card]");
+        if (!card) return;
+        const cr = card.getBoundingClientRect();
+        const bx = (cr.left - base.left) / z; // dependent prompt LEFT (target)
+        const by = (cr.top + cr.height / 2 - base.top) / z;
+        const dx = Math.max(60, Math.abs(bx - ax) * 0.5);
+        next.push({
+          key: `summary__${pid}`,
+          promptId: pid,
+          colId: "",
+          color: SUMMARY_EDGE_COLOR,
+          ax,
+          ay,
+          bx,
+          by,
+          d: `M${ax} ${ay} C${ax + dx} ${ay} ${bx - dx} ${by} ${bx} ${by}`,
+        });
+      });
+    }
     setEdges(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structuralKey, layoutVersion, sizeTick, pos, layerSize.w, layerSize.h, mapOrientation]);
@@ -545,6 +635,7 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
   const dim = hover !== null;
   const litOf = (n: FlatNode) => {
     if (!hover) return false;
+    if (n.kind === "summary") return false;
     if (n.kind === "prompt")
       return (
         (hover.type === "prompt" && hover.id === n.group.promptId) ||
@@ -623,7 +714,9 @@ export function MapView({ groups, scriptId }: { groups: Group[]; scriptId: strin
                 visibility: p && ready ? "visible" : "hidden",
               }}
             >
-              {n.kind === "prompt" ? (
+              {n.kind === "summary" ? (
+                <SummaryNode summary={summary!} projectId={projectId} scriptId={scriptId} />
+              ) : n.kind === "prompt" ? (
                 <PromptNode
                   group={n.group}
                   scriptId={scriptId}
@@ -844,6 +937,126 @@ function ZoomBtn({
   );
 }
 
+/* ============================ SUMMARY NODE ============================ */
+/** The mind-map anchor block ON the canvas: the project's Summary script. The summary-tagged prompts
+ *  branch off it (violet edges flow from here). Carries status, a вижимка preview, and Regenerate. */
+function SummaryNode({
+  summary,
+  projectId,
+  scriptId,
+}: {
+  summary: ScriptDto;
+  projectId: string | null;
+  scriptId: string;
+}) {
+  const qc = useQueryClient();
+  const regen = usePostApiScriptProjectsIdSummaryRegenerate();
+  const [expanded, setExpanded] = useState(false);
+  const status = summary.variantStatus as SessionStatus | null | undefined;
+  const pending = status === SessionStatus.Queued || status === SessionStatus.Streaming;
+  const failed = status === SessionStatus.Failed;
+  const text = (summary.extractedText ?? "").trim();
+
+  const regenerate = () => {
+    if (!projectId || regen.isPending) return;
+    regen.mutate(
+      { id: projectId },
+      {
+        onSuccess: () => {
+          invalidatePath(qc, "/api/script-projects", `/api/scripts/${scriptId}/sessions`);
+          toast.success("Regenerating the mind map…");
+        },
+        onError: () => toast.error("Couldn’t regenerate the Summary"),
+      },
+    );
+  };
+
+  return (
+    <div data-node data-summary={scriptId} className="relative z-[2] shrink-0" style={{ width: SUMMARY_W }}>
+      <div data-card className="relative rounded-[13px] border border-violet-400/50 bg-card shadow-md">
+        <div className="px-4 pt-3.5 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-violet-500/12 text-violet-600 dark:text-violet-400">
+              <Network className="size-[15px]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="eyebrow !text-[9px] tracking-[0.09em]">Mind map</div>
+              <div className="truncate text-[15px] leading-tight font-[650] tracking-tight">Summary</div>
+            </div>
+            <SummaryStatusPill status={status} />
+          </div>
+
+          {pending ? (
+            <div className="mt-3 flex items-center gap-2 rounded-[10px] border border-dashed border-border-strong px-3 py-2.5 text-[11.5px] text-faint">
+              <Loader2 className="size-3.5 animate-spin" /> Building the mind map…
+            </div>
+          ) : failed ? (
+            <div className="mt-3 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-[11.5px] text-destructive">
+              {summary.variantError || "Summary generation failed."}
+            </div>
+          ) : text ? (
+            <button
+              data-no-drag
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-3 flex w-full items-start gap-2 rounded-[10px] border border-border bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted"
+            >
+              {expanded ? (
+                <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span
+                className={cn(
+                  "min-w-0 flex-1 text-[12px] leading-relaxed whitespace-pre-wrap",
+                  !expanded && "line-clamp-3",
+                )}
+              >
+                {text}
+              </span>
+            </button>
+          ) : (
+            <p className="mt-3 text-[11.5px] text-faint">No Summary yet.</p>
+          )}
+        </div>
+      </div>
+
+      {/* footer toolbar — model + Regenerate */}
+      <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
+        <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
+          <Network className="size-3.5 shrink-0 text-faint" />
+          <span className="truncate">{summary.model ? modelLabel(summary.model) : "Summary"}</span>
+        </span>
+        <span className="flex-1" />
+        <button
+          onClick={regenerate}
+          disabled={regen.isPending || pending || !projectId}
+          title="Regenerate the Summary from the master prompt"
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-600/90 disabled:opacity-50"
+        >
+          {regen.isPending || pending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
+          Regenerate
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SummaryStatusPill({ status }: { status: string | null | undefined }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    [SessionStatus.Queued]: { label: "Queued", cls: "bg-accent text-muted-foreground" },
+    [SessionStatus.Streaming]: { label: "Generating", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+    [SessionStatus.Completed]: { label: "Ready", cls: "bg-ok/15 text-ok" },
+    [SessionStatus.Failed]: { label: "Failed", cls: "bg-destructive/15 text-destructive" },
+  };
+  const s = status ? map[status] : undefined;
+  if (!s) return null;
+  return (
+    <span className={cn("rounded-[5px] px-1.5 py-px text-[9px] font-bold tracking-wide uppercase", s.cls)}>
+      {s.label}
+    </span>
+  );
+}
+
 /* ============================ PROMPT NODE ============================ */
 /** Left side of a lane: the prompt, with a "Generate" run across every model + add-model menu. */
 function PromptNode({
@@ -905,6 +1118,7 @@ function PromptNode({
     <div
       data-node
       data-prompt={group.promptId}
+      data-segment={group.segment}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       className="relative z-[2] w-[360px] shrink-0"
@@ -923,7 +1137,17 @@ function PromptNode({
               <FileText className="size-[15px]" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="eyebrow !text-[9px] tracking-[0.09em]">Prompt</div>
+              <div className="flex items-center gap-1.5">
+                <div className="eyebrow !text-[9px] tracking-[0.09em]">Prompt</div>
+                {group.segment === "summary" && (
+                  <span
+                    title="Runs against the Summary script — the Summary branch"
+                    className="rounded-[4px] bg-violet-500/15 px-1 py-px text-[8px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
+                  >
+                    ↳ SUMMARY
+                  </span>
+                )}
+              </div>
               <div className="truncate text-[15px] leading-tight font-[650] tracking-tight">
                 {group.promptName}
               </div>
@@ -1055,14 +1279,18 @@ function OutputNode({
     toast.success("Generating…");
   };
 
-  const isActive = (r: SessionWithResultsDto) => {
-    const st = (live[r.session.id]?.status ?? r.session.status) as string;
-    return st === SessionStatus.Streaming || st === SessionStatus.Queued;
-  };
-  // Show every run that has results, plus active runs. A failed/empty run is only shown when it's
+  const statusOf = (r: SessionWithResultsDto) => (live[r.session.id]?.status ?? r.session.status) as string;
+  const isActive = (r: SessionWithResultsDto) =>
+    statusOf(r) === SessionStatus.Streaming || statusOf(r) === SessionStatus.Queued;
+  // Parked, waiting on the Summary to finish — shown as a quiet "waiting" state, never as running.
+  const isWaiting = (r: SessionWithResultsDto) => statusOf(r) === SessionStatus.Waiting;
+  // Show every run that has results, plus active/waiting runs. A failed/empty run is only shown when it's
   // the very latest attempt — so repeated rate-limited retries don't stack identical blocks.
-  const displayed = ordered.filter((run, i) => run.results.length > 0 || isActive(run) || i === 0);
+  const displayed = ordered.filter(
+    (run, i) => run.results.length > 0 || isActive(run) || isWaiting(run) || i === 0,
+  );
   const anyStreaming = ordered.some(isActive);
+  const anyWaiting = ordered.some(isWaiting);
 
   // Size the card to this block's OWN longest result (capped at PREVIEW_MAX chars), not always to a
   // full 100 — so short-result blocks stay compact. Probe uses the real text for proportional-font
@@ -1073,7 +1301,8 @@ function OutputNode({
   const probeText = longestContent.slice(0, PREVIEW_MAX);
   // The newest run already shows its own "Try again" when it failed/emptied — so don't double up
   // with the header's generate button in that case.
-  const newestFailed = !!ordered[0] && !isActive(ordered[0]) && ordered[0].results.length === 0;
+  const newestFailed =
+    !!ordered[0] && !isActive(ordered[0]) && !isWaiting(ordered[0]) && ordered[0].results.length === 0;
 
   // Best result to copy from the bar = first favourite, else the newest run's first result.
   const best =
@@ -1187,7 +1416,7 @@ function OutputNode({
         {!newestFailed && (
           <button
             onClick={generateMore}
-            disabled={regen.isPending || anyStreaming}
+            disabled={regen.isPending || anyStreaming || anyWaiting}
             title="Generate more"
             aria-label="Generate more"
             className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-primary px-2.5 text-[11.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
@@ -1197,7 +1426,7 @@ function OutputNode({
             ) : (
               <Sparkles className="size-3.5" />
             )}
-            {anyStreaming ? "Running" : "Generate"}
+            {anyStreaming ? "Running" : anyWaiting ? "Waiting" : "Generate"}
           </button>
         )}
       </div>
@@ -1355,6 +1584,7 @@ function RunBlock({
   const ls = live[run.session.id];
   const status = (ls?.status ?? run.session.status) as string;
   const streaming = status === SessionStatus.Streaming || status === SessionStatus.Queued;
+  const waiting = status === SessionStatus.Waiting;
   const failed = status === SessionStatus.Failed;
   const error = (ls?.error ?? run.session.error) ?? null;
   const rateLimited = !!error && error.includes("429");
@@ -1385,6 +1615,7 @@ function RunBlock({
 
   return (
     <div className="flex flex-col gap-1.5">
+      {waiting && <WaitingRow />}
       {streaming && liveDeltas.length === 0 && <StreamingRow />}
       {streaming &&
         liveDeltas.map(([idx, text]) => (
@@ -1399,7 +1630,7 @@ function RunBlock({
       {results.map((r) => (
         <ResultRow key={r.id} result={r} scriptId={scriptId} onLayoutChange={onLayoutChange} />
       ))}
-      {!streaming && results.length === 0 && (
+      {!streaming && !waiting && results.length === 0 && (
         <div className="flex flex-col items-center gap-2 px-2 py-3 text-center">
           <p className="text-[11.5px] text-faint">
             {failed
@@ -1438,6 +1669,15 @@ function StreamingRow() {
   return (
     <div className="flex animate-pulse items-center gap-2 rounded-[10px] border border-dashed border-border-strong px-3 py-2.5 text-[11.5px] text-faint">
       <Loader2 className="size-3.5 animate-spin" /> generating variants…
+    </div>
+  );
+}
+
+/** A summary-dependent run parked until the Summary finishes — a quiet "waiting" state, not a spinner. */
+function WaitingRow() {
+  return (
+    <div className="flex items-center gap-2 rounded-[10px] border border-dashed border-violet-400/50 bg-violet-500/[0.04] px-3 py-2.5 text-[11.5px] text-violet-600 dark:text-violet-400">
+      <Clock className="size-3.5" /> Waiting for the Summary…
     </div>
   );
 }

@@ -16,8 +16,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
-import { GripVertical, PanelRightClose, SlidersHorizontal, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { GripVertical, Network, PanelRightClose, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   getGetApiPromptsQueryKey,
@@ -56,6 +56,16 @@ export function PromptsPanel() {
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<PromptKind | null>(null);
 
+  // The master Summary is auto-resolved + stable (no manual flag): the workspace's OLDEST Summary-kind
+  // prompt — the same rule the backend uses. Pinned to the top of the library with a frame; one per
+  // workspace; not selectable for a run (it auto-runs as the mind map).
+  const masterSummary = useMemo(() => {
+    const summaries = (prompts ?? []).filter((p) => p.kind === PromptKind.Summary);
+    if (summaries.length === 0) return null;
+    return [...summaries].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt) || a.id.localeCompare(b.id))[0];
+  }, [prompts]);
+  const masterSummaryId = masterSummary?.id ?? null;
+
   // Self-heal a persisted selection: drop any prompt id that no longer exists.
   useEffect(() => {
     if (prompts) prunePrompts(prompts.map((p) => p.id));
@@ -64,6 +74,8 @@ export function PromptsPanel() {
   // Client-side filter for display only — onDragEnd still indexes into the full `prompts` list, so
   // dragging within a filtered view persists a correct whole-workspace order.
   const visible = kindFilter ? (prompts ?? []).filter((p) => p.kind === kindFilter) : prompts;
+  // The master Summary is rendered as a pinned, framed card on top — keep it out of the sortable list.
+  const sortable = (visible ?? []).filter((p) => p.id !== masterSummaryId);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -157,11 +169,11 @@ export function PromptsPanel() {
           <ToggleGroupItem value="all" className="flex-1">
             All
           </ToggleGroupItem>
-          <ToggleGroupItem value={PromptKind.Metadata} className="flex-1">
-            Metadata
+          <ToggleGroupItem value={PromptKind.MainScripts} className="flex-1">
+            Main Scripts
           </ToggleGroupItem>
-          <ToggleGroupItem value={PromptKind.ScriptTransform} className="flex-1">
-            Transform
+          <ToggleGroupItem value={PromptKind.Summary} className="flex-1">
+            Summary
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -170,6 +182,16 @@ export function PromptsPanel() {
         <div className="px-2.5 pb-4">
           {isLoading &&
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1 h-[54px] w-full" />)}
+
+          {/* the workspace's single master Summary — pinned + framed (only when not filtered out) */}
+          {!isLoading && masterSummary && (!kindFilter || kindFilter === PromptKind.Summary) && (
+            <MasterSummaryRow
+              prompt={masterSummary}
+              onOpen={() => setOpenPromptId(masterSummary.id)}
+              onDelete={() => onDelete(masterSummary.id, masterSummary.name)}
+            />
+          )}
+
           {!isLoading && (visible?.length ?? 0) === 0 && (
             <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
               {kindFilter ? "No prompts of this type." : "No prompts yet."}
@@ -177,10 +199,10 @@ export function PromptsPanel() {
               {kindFilter ? "Switch the filter or create one." : "Create one to begin."}
             </p>
           )}
-          {visible && visible.length > 0 && (
+          {sortable.length > 0 && (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={visible.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                {visible.map((p) => (
+              <SortableContext items={sortable.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {sortable.map((p) => (
                   <PromptRow
                     key={p.id}
                     prompt={p}
@@ -203,6 +225,62 @@ export function PromptsPanel() {
         onOpenChange={(o) => !o && setOpenPromptId(null)}
       />
     </aside>
+  );
+}
+
+/** The workspace's single master Summary prompt — pinned at the top of the library with a frame so it
+ *  reads as THE mind-map source. Auto-resolved (oldest Summary); not selectable for a run (it auto-runs
+ *  as the mind map); not draggable. */
+function MasterSummaryRow({
+  prompt,
+  onOpen,
+  onDelete,
+}: {
+  prompt: PromptListItemDto;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      onClick={onOpen}
+      title="The mind-map source — auto-runs on each script's first generation"
+      className="group relative mb-2 flex cursor-pointer items-start gap-2 rounded-lg border-[1.5px] border-violet-400/70 bg-violet-500/[0.05] p-2.5 transition-colors hover:bg-violet-500/[0.09]"
+    >
+      <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400">
+        <Network className="size-3.5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <span className="truncate text-[13px] font-semibold">{prompt.name}</span>
+        <div className="mt-[3px] flex items-center gap-1.5 text-[11px] text-faint">
+          <span className="shrink-0 rounded-[5px] bg-violet-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-violet-600 dark:text-violet-400">
+            MIND MAP · MASTER
+          </span>
+          <span className="truncate">
+            auto-runs · {prompt.versionCount} version{prompt.versionCount === 1 ? "" : "s"}
+          </span>
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+        title="History & versions"
+      >
+        <SlidersHorizontal className="size-3.5" />
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+        title="Delete prompt"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -275,19 +353,27 @@ function PromptRow({
           )}
         </div>
         <div className="mt-[3px] flex items-center gap-1.5 text-[11px] text-faint">
-          {prompt.kind === PromptKind.ScriptTransform ? (
+          {prompt.kind === PromptKind.Summary ? (
             <span
-              title="Transforms a script into a new variant"
+              title="Transforms a script into a new Summary script"
               className="shrink-0 rounded-[5px] bg-ok/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-ok"
             >
-              TRANSFORM
+              SUMMARY
             </span>
           ) : (
             <span
-              title="Generates YouTube metadata"
+              title="Generates the main content"
               className="shrink-0 rounded-[5px] bg-accent px-1.5 py-px text-[9px] font-bold tracking-wide text-muted-foreground"
             >
-              METADATA
+              MAIN
+            </span>
+          )}
+          {prompt.useSummarySource && (
+            <span
+              title="Runs against the project's Summary script (Summary branch)"
+              className="shrink-0 rounded-[5px] bg-violet-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
+            >
+              ↳ SUMMARY
             </span>
           )}
           {prompt.useKeywords && (

@@ -29,7 +29,7 @@ public interface IJobScheduler
 {
     void EnqueueGeneration(Guid sessionId);
 
-    /// <summary>Enqueues background generation of one script-variant (a Variant <c>Script</c> row).</summary>
+    /// <summary>Enqueues background generation of one script-variant (a Variant/Summary <c>Script</c> row).</summary>
     void EnqueueVariantGeneration(Guid scriptId);
 }
 

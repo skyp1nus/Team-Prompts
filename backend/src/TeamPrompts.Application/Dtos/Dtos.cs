@@ -40,7 +40,10 @@ public sealed record ScriptProjectListItemDto(
 public sealed record ScriptProjectDto(
     Guid Id, Guid WorkspaceId, string Name, Guid? OriginalScriptId, int SortOrder,
     ScriptDto? Original, IReadOnlyList<ScriptDto> Variants, ScriptDto? Keywords,
-    UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    // The project's Summary script (the "mind map" anchor) — the master Summary prompt's output over the
+    // Original. Null until the first generation kicks it off (or if the workspace has no master Summary).
+    ScriptDto? Summary = null);
 
 public sealed record UpdateScriptProjectRequest(string Name);
 
@@ -51,14 +54,15 @@ public sealed record UpdateScriptProjectRequest(string Name);
 public sealed record UpdateProjectKeywordsRequest(string Content, uint? ExpectedVersion = null);
 
 /// <summary>Generate a new script-variant in a project. <c>PromptVersionId</c> null → the prompt's
-/// current main version. The prompt should be a <c>ScriptTransform</c> prompt (вижимка / rewrite).</summary>
+/// current main version. The prompt should be a <c>Summary</c> prompt (вижимка / rewrite).</summary>
 public sealed record CreateScriptVariantRequest(
     Guid PromptId, Guid? PromptVersionId = null, string? Model = null, string? Name = null);
 
 // ---- Prompts & versions ----
 public sealed record PromptListItemDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind, bool UseKeywords);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind, bool UseKeywords,
+    bool UseSummarySource);
 
 public sealed record PromptVersionDto(
     Guid Id, Guid PromptId, Guid? ParentVersionId, string Content,
@@ -67,13 +71,15 @@ public sealed record PromptVersionDto(
 public sealed record PromptDetailDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions,
-    PromptKind Kind, bool UseKeywords);
+    PromptKind Kind, bool UseKeywords, bool UseSummarySource);
 
 public sealed record CreatePromptRequest(
-    Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.Metadata, bool UseKeywords = false);
+    Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.MainScripts,
+    bool UseKeywords = false, bool UseSummarySource = false);
 
-/// <summary><c>UseKeywords</c> null → leave it unchanged (rename-only).</summary>
-public sealed record UpdatePromptRequest(string Name, bool? UseKeywords = null);
+/// <summary>Any null field is left unchanged (rename-only).</summary>
+public sealed record UpdatePromptRequest(
+    string Name, bool? UseKeywords = null, bool? UseSummarySource = null);
 
 /// <summary>Set the team-wide top-to-bottom order of a workspace's prompts. <c>OrderedIds</c> is the
 /// full list in the new order; each prompt's <c>SortOrder</c> becomes its index in this list.</summary>
@@ -92,7 +98,10 @@ public sealed record SessionDto(
     Guid Id, Guid? RunId, Guid ScriptId, Guid PromptId, Guid PromptVersionId,
     string PromptName, string Model, SessionStatus Status, string? Error,
     UserRef CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt,
-    int PromptVersionNumber, bool IsMainVersion, string? PromptVersionNote);
+    int PromptVersionNumber, bool IsMainVersion, string? PromptVersionNote,
+    // True when this session ran against a Summary script (a summary-tagged prompt) → the map renders it
+    // in the Summary branch rather than a normal prompt lane.
+    bool IsSummarySource = false);
 
 public sealed record GenerationResultDto(
     Guid Id, Guid SessionId, int Index, string Content, ResultKind? Kind,

@@ -9,4 +9,6 @@ export interface UpdatePromptRequest {
   name: string;
   /** @nullable */
   useKeywords?: boolean | null;
+  /** @nullable */
+  useSummarySource?: boolean | null;
 }

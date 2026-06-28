@@ -37,9 +37,11 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
-  kind: z.enum([PromptKind.Metadata, PromptKind.ScriptTransform]),
+  kind: z.enum([PromptKind.MainScripts, PromptKind.Summary]),
   content: z.string().trim().min(1, "Prompt instructions are required"),
   useKeywords: z.boolean(),
+  // The "Summary tag": run this prompt against the project's Summary script instead of the Original.
+  useSummarySource: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -51,7 +53,13 @@ export function CreatePromptDialog() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", kind: PromptKind.Metadata, content: "", useKeywords: false },
+    defaultValues: {
+      name: "",
+      kind: PromptKind.MainScripts,
+      content: "",
+      useKeywords: false,
+      useSummarySource: false,
+    },
   });
 
   const onSubmit = (values: FormValues) =>
@@ -63,6 +71,7 @@ export function CreatePromptDialog() {
           content: values.content,
           kind: values.kind,
           useKeywords: values.useKeywords,
+          useSummarySource: values.useSummarySource,
         },
       },
       {
@@ -135,20 +144,43 @@ export function CreatePromptDialog() {
                         spacing={0}
                         className="w-full"
                       >
-                        <ToggleGroupItem value={PromptKind.Metadata} className="flex-1">
-                          Metadata
+                        <ToggleGroupItem value={PromptKind.MainScripts} className="flex-1">
+                          Main Scripts
                         </ToggleGroupItem>
-                        <ToggleGroupItem value={PromptKind.ScriptTransform} className="flex-1">
-                          Transform
+                        <ToggleGroupItem value={PromptKind.Summary} className="flex-1">
+                          Summary
                         </ToggleGroupItem>
                       </ToggleGroup>
                     </FormControl>
                     <p className="text-[11px] text-faint">
-                      {field.value === PromptKind.ScriptTransform
-                        ? "Rewrites a script into a new alternative (summary, rewrite, tone shift)."
-                        : "Generates YouTube metadata — titles, descriptions, hooks, tags."}
+                      {field.value === PromptKind.Summary
+                        ? "Transforms a script into a new Summary script (вижимка, rewrite, tone shift). The workspace's top Summary prompt auto-runs as the mind map — no setup."
+                        : "Generates the main content — titles, descriptions, hooks, tags."}
                     </p>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="useSummarySource"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start justify-between gap-3 rounded-lg border border-border p-3.5">
+                    <div className="min-w-0 space-y-0.5">
+                      <FormLabel>Summary tag</FormLabel>
+                      <p className="text-[11px] leading-relaxed text-faint">
+                        Run this prompt against the project&apos;s Summary script instead of the Original.
+                        Its results land in the separate Summary branch on the map — runnable once the
+                        Summary is ready.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={(c) => field.onChange(c === true)}
+                        className="mt-0.5 shrink-0"
+                      />
+                    </FormControl>
                   </FormItem>
                 )}
               />

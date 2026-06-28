@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddScoped<IScriptProjectService, ScriptProjectService>();
         services.AddScoped<IPromptService, PromptService>();
         services.AddScoped<IGenerationService, GenerationService>();
+        services.AddScoped<ISummaryService, SummaryService>();
         services.AddScoped<ICanvasService, CanvasService>();
         services.AddScoped<IGenerationExecutor, GenerationExecutor>();
         services.AddScoped<IScriptVariantExecutor, ScriptVariantExecutor>();

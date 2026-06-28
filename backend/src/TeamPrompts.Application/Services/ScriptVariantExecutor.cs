@@ -16,14 +16,19 @@ namespace TeamPrompts.Application.Services;
 public sealed class ScriptVariantExecutor(
     IAppDbContext db,
     IOpenRouterClient openRouter,
-    IActivityLogger activity) : IScriptVariantExecutor
+    IActivityLogger activity,
+    ISummaryService summaries) : IScriptVariantExecutor
 {
     private static readonly Regex ScriptToken = new(@"\{\{\s*script\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex KeywordsToken = new(@"\{\{\s*keywords\s*\}\}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public async Task ExecuteAsync(Guid scriptId, CancellationToken ct = default)
     {
-        var variant = await db.Scripts.FirstOrDefaultAsync(s => s.Id == scriptId && s.Kind == ScriptKind.Variant, ct);
+        // Both a manual Variant and the auto master-Summary script ride this single-document pipeline
+        // (no option-splitting). The Summary script is just a Variant whose Kind marks it as the project's
+        // mind-map anchor + the source for summary-tagged prompts.
+        var variant = await db.Scripts.FirstOrDefaultAsync(
+            s => s.Id == scriptId && (s.Kind == ScriptKind.Variant || s.Kind == ScriptKind.Summary), ct);
         if (variant is null) return;
 
         try
@@ -97,6 +102,10 @@ public sealed class ScriptVariantExecutor(
                     sourceScriptId = variant.SourceScriptId,
                     generationId,
                 })), CancellationToken.None);
+
+            // A Summary just finished → release every prompt parked Waiting on it (run them now).
+            if (variant.Kind == ScriptKind.Summary)
+                await summaries.DispatchDependentsAsync(variant.Id, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -116,6 +125,10 @@ public sealed class ScriptVariantExecutor(
                 Summary: $"Script-variant generation failed for \"{variant.Name}\"",
                 Model: variant.Model,
                 Metadata: JsonSerializer.Serialize(new { error = ex.Message })), CancellationToken.None);
+
+            // The Summary failed → don't leave dependents hanging; fail them instead of running on empty text.
+            if (variant.Kind == ScriptKind.Summary)
+                await summaries.FailDependentsAsync(variant.Id, "The Summary this prompt depends on didn’t finish generating.", CancellationToken.None);
         }
     }
 
@@ -140,7 +153,7 @@ public sealed class ScriptVariantExecutor(
         if (scriptInline)
             prompt = ScriptToken.Replace(prompt, script);
 
-        var system = new StringBuilder(GenerationDefaults.ScriptTransformSystem());
+        var system = new StringBuilder(GenerationDefaults.SummarySystem());
         if (!scriptInline)
             system.Append("\n\n").Append(GenerationDefaults.SourceScriptBlock(script));
         if (kw.Length > 0 && !keywordTokenUsed)

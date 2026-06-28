@@ -44,11 +44,12 @@ public static class GenerationDefaults
         """;
 
     /// <summary>
-    /// Always-on system message for script-variant generation: transform a SOURCE script into a new
+    /// Always-on system message for Summary-script generation: transform a SOURCE script into a new
     /// full script (a condensed "вижимка", a rewrite, a tone shift) per the user's instruction. Unlike
-    /// metadata generation this returns ONE document, not a list of options.
+    /// MainScripts generation this returns ONE document, not a list of options. Used for the master
+    /// Summary (the mind-map anchor) and any manual Summary-prompt variant.
     /// </summary>
-    public static string ScriptTransformSystem() =>
+    public static string SummarySystem() =>
         """
         You transform a source video script into a NEW script according to the user's instruction
         (for example: condense it into a tight summary / "вижимка", rewrite it, or shift its tone).

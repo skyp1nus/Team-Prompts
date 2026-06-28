@@ -9,6 +9,6 @@ export type PromptKind = typeof PromptKind[keyof typeof PromptKind];
 
 
 export const PromptKind = {
-  Metadata: 'Metadata',
-  ScriptTransform: 'ScriptTransform',
+  MainScripts: 'MainScripts',
+  Summary: 'Summary',
 } as const;

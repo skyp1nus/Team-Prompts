@@ -8,7 +8,7 @@ namespace TeamPrompts.Api.Controllers;
 [ApiController]
 [Route("api/script-projects")]
 [Authorize]
-public sealed class ScriptProjectsController(IScriptProjectService projects) : ControllerBase
+public sealed class ScriptProjectsController(IScriptProjectService projects, ISummaryService summaries) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ScriptProjectListItemDto>>> List(
@@ -71,4 +71,13 @@ public sealed class ScriptProjectsController(IScriptProjectService projects) : C
         await projects.DeleteVariantAsync(id, variantId, ct);
         return NoContent();
     }
+
+    // ---- summary (the "mind map" anchor: master Summary prompt over the Original) ----
+
+    /// <summary>(Re)generate the project's Summary script from the workspace's master Summary prompt.
+    /// Resets the existing Summary in place (keeping its canvas node) or creates one. Returns the queued
+    /// Summary script. 400 if the workspace has no master Summary prompt.</summary>
+    [HttpPost("{id:guid}/summary/regenerate")]
+    public async Task<ActionResult<ScriptDto>> RegenerateSummary(Guid id, CancellationToken ct)
+        => Ok(await summaries.RegenerateForProjectAsync(id, null, ct));
 }

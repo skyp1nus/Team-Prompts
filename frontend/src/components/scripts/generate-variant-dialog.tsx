@@ -30,8 +30,8 @@ import { invalidatePath } from "@/lib/query/invalidate";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 /**
- * Generate a new alternative script inside a project. The prompt list is scoped to Script-transform
- * prompts — distinct from the metadata prompts used by the center generation flow.
+ * Generate a new alternative script inside a project. The prompt list is scoped to Summary prompts —
+ * distinct from the Main Scripts prompts used by the center generation flow.
  */
 export function GenerateVariantDialog({
   projectId,
@@ -58,7 +58,7 @@ export function GenerateVariantDialog({
   const [name, setName] = useState("");
 
   const { data: prompts } = useGetApiPrompts(
-    { workspaceId: activeWorkspaceId, kind: PromptKind.ScriptTransform },
+    { workspaceId: activeWorkspaceId, kind: PromptKind.Summary },
     { query: { enabled: open && !!activeWorkspaceId } },
   );
   const gen = usePostApiScriptProjectsIdVariants();
@@ -102,18 +102,18 @@ export function GenerateVariantDialog({
         <DialogHeader>
           <DialogTitle>New alternative</DialogTitle>
           <DialogDescription>
-            Rewrite the source script with a transform prompt — a short summary, a rewrite, a tone
+            Rewrite the source script with a Summary prompt — a short вижимка, a rewrite, a tone
             shift. Runs in the background.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>Transform prompt</Label>
+            <Label>Summary prompt</Label>
             {hasPrompts ? (
               <Select value={promptId ?? undefined} onValueChange={(v) => setPromptId(v)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pick a transform prompt" />
+                  <SelectValue placeholder="Pick a Summary prompt" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[280px]">
                   {prompts?.map((p) => (
@@ -125,8 +125,8 @@ export function GenerateVariantDialog({
               </Select>
             ) : (
               <p className="rounded-lg border border-dashed border-border-strong px-3 py-4 text-center text-[12px] leading-relaxed text-faint">
-                No transform prompts yet. Create one in the Prompt Library and set its type to
-                “Transform”.
+                No Summary prompts yet. Create one in the Prompt Library and set its type to
+                “Summary”.
               </p>
             )}
           </div>

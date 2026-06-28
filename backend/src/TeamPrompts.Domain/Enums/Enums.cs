@@ -10,7 +10,8 @@ public enum FileType
 }
 
 /// <summary>Whether a Script is the uploaded source (Original), an AI-generated alternative (Variant),
-/// or the project's editable keyword list (Keywords) used by keyword-aware prompts.</summary>
+/// the project's editable keyword list (Keywords) used by keyword-aware prompts, or the auto-generated
+/// master-Summary script (Summary) that anchors the mind map and feeds summary-tagged prompts.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ScriptKind
 {
@@ -20,14 +21,22 @@ public enum ScriptKind
     /// <summary>The per-project keyword/SEO-term list. One per project, created empty on upload,
     /// edited by the team, and injected into generations whose prompt has UseKeywords=true.</summary>
     Keywords = 2,
+
+    /// <summary>The per-project Summary script (the "mind map" anchor): produced by the workspace's
+    /// master Summary prompt from the Original, one per project, and used as the source for any prompt
+    /// tagged with <see cref="PromptKind"/>-independent <c>UseSummarySource</c>. Appended last so the
+    /// int values of the earlier members never shift.</summary>
+    Summary = 3,
 }
 
-/// <summary>Whether a Prompt generates YouTube metadata or transforms a script into a new variant.</summary>
+/// <summary>Whether a Prompt generates the main content from a script (MainScripts — YouTube metadata,
+/// options, etc.) or transforms a source script into a new Summary script (Summary — the вижимка the
+/// master Summary prompt produces). Scopes which library a prompt shows up in.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PromptKind
 {
-    Metadata = 0,
-    ScriptTransform = 1,
+    MainScripts = 0,
+    Summary = 1,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -46,6 +55,11 @@ public enum SessionStatus
     Streaming = 1,
     Completed = 2,
     Failed = 3,
+
+    /// <summary>A summary-dependent session that is parked until its Summary script finishes. It is created
+    /// up-front (so the node shows immediately) but NOT enqueued; the Summary's executor flips it to
+    /// <see cref="Queued"/> on completion. Appended last so existing int values never shift.</summary>
+    Waiting = 4,
 }
 
 /// <summary>

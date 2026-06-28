@@ -13,14 +13,20 @@ public class Prompt
 
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Whether this prompt produces YouTube metadata or transforms a source script into a
-    /// new alternative script (a вижимка). Scopes which library a prompt shows up in.</summary>
-    public PromptKind Kind { get; set; } = PromptKind.Metadata;
+    /// <summary>Whether this prompt produces the main content (MainScripts) or is a Summary prompt that
+    /// transforms a source script into a new Summary script (a вижимка). Scopes which library it shows in.</summary>
+    public PromptKind Kind { get; set; } = PromptKind.MainScripts;
 
     /// <summary>When true, the active script's project keywords are injected into every generation
     /// run with this prompt — replacing a <c>{{keywords}}</c> token if present, else appended as a
     /// keywords block. Off by default; toggled when the prompt is created.</summary>
     public bool UseKeywords { get; set; }
+
+    /// <summary>The "Summary tag". When true, generations using this prompt run against the project's
+    /// <see cref="ScriptKind.Summary"/> script (the master Summary's output) instead of the Original —
+    /// so the result lands in the Summary branch on the map. Off by default; the prompt runs against
+    /// the Original. Orthogonal to <see cref="Kind"/> — a MainScripts prompt may be summary-tagged.</summary>
+    public bool UseSummarySource { get; set; }
 
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
