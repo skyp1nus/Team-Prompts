@@ -62,6 +62,11 @@ type WorkspaceValue = {
   runModels: string[];
   toggleRunModel: (m: string) => void;
   setRunModels: (m: string[]) => void;
+  /** Snapshot the current prompt + model selection as this space's "last run setup" (called on Generate). */
+  rememberRunSetup: () => void;
+  /** Re-apply this space's last run setup (prompts + models) so a freshly added script inherits the
+   *  previous scenario's setup instead of starting blank. No-op if nothing was remembered yet. */
+  applyRunSetup: () => void;
 
   /** Center view mode (Columns / Grid / Map). */
   view: CenterView;
@@ -137,6 +142,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [batchScriptIds, setBatchScriptIds] = usePersistedState<string[]>("tp.ws.batchScripts", []);
   const [expandedProjectIds, setExpandedProjectIds] = usePersistedState<string[]>("tp.ws.expandedProjects", []);
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
+  // Per-space memory of the last prompt+model selection used for a generation, so a freshly added
+  // script inherits it (the "copy the setup from the previous scenario" UX). Keyed by workspace so a
+  // restored set only ever contains prompts that exist in that space.
+  const [lastRunSetup, setLastRunSetup] = usePersistedState<
+    Record<string, { promptIds: string[]; models: string[] }>
+  >("tp.ws.lastRunSetup", {});
   const [view, setView] = usePersistedState<CenterView>("tp.ws.view", "map");
   const [showHighlightsOnly, setShowHighlightsOnly] = usePersistedState<boolean>("tp.ws.highlightsOnly", false);
   const [focusSummaryOnly, setFocusSummaryOnly] = usePersistedState<boolean>("tp.ws.focusSummary", false);
@@ -228,6 +239,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [setBatchScriptIds, setActiveScriptId],
   );
 
+  const rememberRunSetup = useCallback(() => {
+    // Nothing meaningful to carry if no prompt was selected; keep the previous memory in that case.
+    if (selectedPromptIds.length === 0) return;
+    setLastRunSetup((m) => ({
+      ...m,
+      [activeWorkspaceId]: { promptIds: selectedPromptIds, models: runModels },
+    }));
+  }, [selectedPromptIds, runModels, activeWorkspaceId, setLastRunSetup]);
+
+  const applyRunSetup = useCallback(() => {
+    const saved = lastRunSetup[activeWorkspaceId];
+    if (!saved) return;
+    if (saved.promptIds.length) setSelectedPromptIds(saved.promptIds);
+    if (saved.models.length) setRunModels(saved.models);
+  }, [lastRunSetup, activeWorkspaceId, setSelectedPromptIds, setRunModels]);
+
   const toggleRunModel = useCallback(
     (m: string) => setRunModels((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m])),
     [setRunModels],
@@ -273,6 +300,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         runModels,
         toggleRunModel,
         setRunModels,
+        rememberRunSetup,
+        applyRunSetup,
         view,
         setView,
         showHighlightsOnly,

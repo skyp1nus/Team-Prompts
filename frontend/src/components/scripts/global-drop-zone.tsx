@@ -17,7 +17,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
  */
 export function GlobalDropZone() {
   const qc = useQueryClient();
-  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript } = useWorkspace();
+  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript, applyRunSetup } =
+    useWorkspace();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   // dragenter/leave fire per element — count depth so moving across children doesn't flicker the overlay.
@@ -72,6 +73,8 @@ export function GlobalDropZone() {
           setActiveScriptId(project.originalScriptId);
           // Default the new source to "use as context" (checked) so generation isn't blocked.
           selectBatchScript(project.originalScriptId);
+          // Inherit the previous scenario's prompt+model selection so the new script is run-ready (#12).
+          applyRunSetup();
         }
         toast.success("Project created");
       } catch {
@@ -91,7 +94,7 @@ export function GlobalDropZone() {
       window.removeEventListener("dragleave", onLeave);
       window.removeEventListener("drop", onDrop);
     };
-  }, [qc, activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript]);
+  }, [qc, activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript, applyRunSetup]);
 
   if (!dragging && !busy) return null;
 

@@ -74,7 +74,8 @@ type FormValues = z.infer<typeof schema>;
 
 export function UploadDialog() {
   const qc = useQueryClient();
-  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript } = useWorkspace();
+  const { activeWorkspaceId, setActiveScriptId, setProjectExpanded, selectBatchScript, applyRunSetup } =
+    useWorkspace();
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -108,6 +109,8 @@ export function UploadDialog() {
         setActiveScriptId(project.originalScriptId);
         // Default the new source to "use as context" (checked) so generation isn't blocked.
         selectBatchScript(project.originalScriptId);
+        // Inherit the previous scenario's prompt+model selection so the new script is run-ready (#12).
+        applyRunSetup();
       }
       toast.success("Project created");
       setOpen(false);

@@ -42,6 +42,7 @@ export function CenterPanel() {
     promptVersions,
     batchScriptIds,
     runModels,
+    rememberRunSetup,
     view,
     setView,
     showHighlightsOnly,
@@ -131,6 +132,8 @@ export function CenterPanel() {
 
   const onGenerate = async () => {
     if (!canGenerate) return;
+    // Remember this prompt+model selection so a newly added script can inherit it (#12).
+    rememberRunSetup();
     const models = runModels.length > 0 ? runModels : [null];
     // Resolve each prompt's version now: a pinned version, else null = the prompt's current main.
     const prompts = selectedPromptIds.map((promptId) => ({
