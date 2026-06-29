@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -9,9 +9,9 @@ import {
   useDeleteApiScriptProjectsIdVariantsVariantId,
   useGetApiScriptProjects,
   useGetApiScriptProjectsId,
+  usePutApiScriptProjectsId,
 } from "@/api/endpoints/script-projects/script-projects";
 import { FileType, type ScriptDto, ScriptKind, type ScriptProjectListItemDto, SessionStatus } from "@/api/model";
-import { GenerateVariantDialog } from "@/components/scripts/generate-variant-dialog";
 import { KeywordsDialog } from "@/components/scripts/keywords-dialog";
 import { ScriptViewerDialog } from "@/components/scripts/script-viewer-dialog";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
@@ -129,7 +129,10 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
   const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
     useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
-  const [genOpen, setGenOpen] = useState(false);
+  const renameProject = usePutApiScriptProjectsId();
+  // null = not renaming. A string = the live draft, seeded from the current name when rename opens.
+  const [draft, setDraft] = useState<string | null>(null);
+  const renaming = draft !== null;
 
   const { data: detail, isLoading } = useGetApiScriptProjectsId(project.id, {
     query: {
@@ -168,52 +171,111 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
     );
   };
 
+  const cancelRename = () => setDraft(null);
+  const saveRename = () => {
+    const next = (draft ?? "").trim();
+    if (!next || next === project.name) {
+      cancelRename();
+      return;
+    }
+    renameProject.mutate(
+      { id: project.id, data: { name: next } },
+      {
+        onSuccess: async () => {
+          await invalidatePath(qc, "/api/script-projects", "/api/scripts");
+          toast.success("Project renamed");
+          setDraft(null);
+        },
+        onError: () => toast.error("Rename failed"),
+      },
+    );
+  };
+
   return (
     <Collapsible open={expanded} onOpenChange={onOpenChange} className="mb-0.5">
       <div className="group relative flex items-center rounded-[9px] transition-colors hover:bg-accent">
-        <CollapsibleTrigger
-          render={
-            <button className="flex min-w-0 flex-1 items-center gap-2 rounded-[9px] p-2.5 text-left" />
-          }
-        >
-          <ChevronRight
-            className={cn("size-4 shrink-0 text-faint transition-transform", expanded && "rotate-90")}
-          />
-          <Folder className="size-[18px] shrink-0 text-primary/80" />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
-        </CollapsibleTrigger>
-        <div className="flex shrink-0 items-center pr-1.5">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  aria-label="Project actions"
-                  title="More"
-                  className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
-                >
-                  <MoreHorizontal className="size-4" />
-                </button>
-              }
+        {renaming ? (
+          // Inline rename: replace the whole header row with an editable field so the click never
+          // toggles the collapsible. Enter saves, Escape cancels, blur saves.
+          <div className="flex min-w-0 flex-1 items-center gap-2 p-2.5">
+            <Folder className="size-[18px] shrink-0 text-primary/80" />
+            <Input
+              autoFocus
+              value={draft ?? ""}
+              disabled={renameProject.isPending}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  saveRename();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelRename();
+                }
+              }}
+              onBlur={saveRename}
+              className="h-7 text-[13px] font-medium"
+              aria-label="Project name"
             />
-            <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
-              <DropdownMenuItem onClick={() => setGenOpen(true)} className="whitespace-nowrap px-2 py-1.5">
-                <Sparkles />
-                Generate variant
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={onDeleteProject}
-                className="whitespace-nowrap px-2 py-1.5"
-              >
-                <X />
-                Delete project
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={saveRename}
+              disabled={renameProject.isPending}
+              aria-label="Save name"
+              className="flex size-[22px] shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground"
+            >
+              <Check className="size-4" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <CollapsibleTrigger
+              render={
+                <button className="flex min-w-0 flex-1 items-center gap-2 rounded-[9px] p-2.5 text-left" />
+              }
+            >
+              <ChevronRight
+                className={cn("size-4 shrink-0 text-faint transition-transform", expanded && "rotate-90")}
+              />
+              <Folder className="size-[18px] shrink-0 text-primary/80" />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
+            </CollapsibleTrigger>
+            <div className="flex shrink-0 items-center pr-1.5">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      aria-label="Project actions"
+                      title="More"
+                      className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
+                  <DropdownMenuItem
+                    onClick={() => setDraft(project.name)}
+                    className="whitespace-nowrap px-2 py-1.5"
+                  >
+                    <Pencil />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={onDeleteProject}
+                    className="whitespace-nowrap px-2 py-1.5"
+                  >
+                    <X />
+                    Delete project
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        )}
       </div>
-
-      <GenerateVariantDialog projectId={project.id} open={genOpen} onOpenChange={setGenOpen} />
 
       <CollapsibleContent>
         <div className="ml-[18px] border-l border-border pl-2">
