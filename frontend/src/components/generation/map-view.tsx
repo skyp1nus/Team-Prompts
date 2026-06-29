@@ -1757,14 +1757,13 @@ function RunBlock({
               disabled={deleteRun.isPending}
               title="Delete this run"
               aria-label="Delete this run"
-              className="flex h-6 items-center gap-1 rounded-[7px] px-1.5 text-[10.5px] text-faint transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+              className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
             >
               {deleteRun.isPending ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Trash2 className="size-3" />
+                <Trash2 className="size-3.5" />
               )}
-              Delete run
             </button>
           </div>
           <DeleteConfirmDialog
