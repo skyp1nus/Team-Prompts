@@ -1492,7 +1492,10 @@ function OutputNode({
 }
 
 /** Invisible sizer: makes a card exactly wide enough for its longest result (≤ PREVIEW_MAX chars),
- *  mirroring the real row's chevron + count + star so collapsed text never truncates mid-card. */
+ *  mirroring the real collapsed row EXACTLY — chevron + text + count + BOTH action buttons (highlight
+ *  + favourite) — so the card is sized to the real text and `truncate` never clips a ≤100-char title
+ *  mid-card. Any element here that the real row has but the probe lacks shrinks the card and clips text
+ *  early, so keep the two layouts in lockstep. */
 function WidthProbe({ text }: { text: string }) {
   if (!text) return null;
   return (
@@ -1501,6 +1504,7 @@ function WidthProbe({ text }: { text: string }) {
         <span className="size-3.5 shrink-0" />
         <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">{text}</span>
         <span className="shrink-0 text-[10px] tabular-nums">000</span>
+        <span className="size-[22px] shrink-0" />
         <span className="size-[22px] shrink-0" />
       </div>
     </div>
