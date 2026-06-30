@@ -239,7 +239,14 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
                 className={cn("size-4 shrink-0 text-faint transition-transform", expanded && "rotate-90")}
               />
               <Folder className="size-[18px] shrink-0 text-primary/80" />
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
+              {/* Project name comes from the uploaded filename and is often long — show up to two
+                  lines (break long unspaced names) so the whole title is visible, title attr covers overflow. */}
+              <span
+                title={project.name}
+                className="line-clamp-2 min-w-0 flex-1 text-[13px] font-medium leading-snug break-words"
+              >
+                {project.name}
+              </span>
             </CollapsibleTrigger>
             <div className="flex shrink-0 items-center pr-1.5">
               <DropdownMenu>
