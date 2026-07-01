@@ -58,6 +58,15 @@ type WorkspaceValue = {
   toggleProjectExpanded: (id: string) => void;
   setProjectExpanded: (id: string, expanded: boolean) => void;
 
+  /** The single project the Scripts rail is focused on — opened via a share link. When set the rail
+   *  shows only this project (its space) and hides all others. null = show everything. */
+  focusedProjectId: string | null;
+  /** Enter/exit single-project focus directly (e.g. the "Show all" exit). */
+  setFocusedProject: (id: string | null) => void;
+  /** Open a shared project: switch to its space, focus it, and expand + activate its source script.
+   *  Mirrors selectWorkspace's reset so no stale selection from another space leaks into the run. */
+  focusProject: (p: { projectId: string; workspaceId: string; originalScriptId: string | null }) => void;
+
   /** Models the next run fans out across (design model picker). Empty → use default. */
   runModels: string[];
   toggleRunModel: (m: string) => void;
@@ -141,6 +150,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
   const [batchScriptIds, setBatchScriptIds] = usePersistedState<string[]>("tp.ws.batchScripts", []);
   const [expandedProjectIds, setExpandedProjectIds] = usePersistedState<string[]>("tp.ws.expandedProjects", []);
+  const [focusedProjectId, setFocusedProjectId] = usePersistedState<string | null>("tp.ws.focusedProject", null);
   const [runModels, setRunModels] = usePersistedState<string[]>("tp.ws.runModels", []);
   // Per-space memory of the last prompt+model selection used for a generation, so a freshly added
   // script inherits it (the "copy the setup from the previous scenario" UX). Keyed by workspace so a
@@ -170,6 +180,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setSelectedPromptIds([]);
       setPromptVersions({});
       setExpandedProjectIds([]);
+      setFocusedProjectId(null);
       setActiveWorkspaceId(id);
     },
     [
@@ -178,6 +189,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setSelectedPromptIds,
       setPromptVersions,
       setExpandedProjectIds,
+      setFocusedProjectId,
       setActiveWorkspaceId,
     ],
   );
@@ -273,6 +285,29 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [setExpandedProjectIds],
   );
 
+  const focusProject = useCallback(
+    (p: { projectId: string; workspaceId: string; originalScriptId: string | null }) => {
+      // Drop the previous space's selections (same reset as selectWorkspace) then land focused on the
+      // one project: switch space, expand + activate its source, and filter the rail to it alone.
+      setSelectedPromptIds([]);
+      setPromptVersions({});
+      setBatchScriptIds([]);
+      setActiveWorkspaceId(p.workspaceId);
+      setExpandedProjectIds([p.projectId]);
+      setActiveScriptId(p.originalScriptId ?? null);
+      setFocusedProjectId(p.projectId);
+    },
+    [
+      setSelectedPromptIds,
+      setPromptVersions,
+      setBatchScriptIds,
+      setActiveWorkspaceId,
+      setExpandedProjectIds,
+      setActiveScriptId,
+      setFocusedProjectId,
+    ],
+  );
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -297,6 +332,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         expandedProjectIds,
         toggleProjectExpanded,
         setProjectExpanded,
+        focusedProjectId,
+        setFocusedProject: setFocusedProjectId,
+        focusProject,
         runModels,
         toggleRunModel,
         setRunModels,
