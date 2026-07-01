@@ -85,8 +85,11 @@ public sealed class GenerationService(
         }
 
         var settings = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct);
-        var model = !string.IsNullOrWhiteSpace(req.Model)
-            ? req.Model!.Trim()
+        // Only model-choosers (Owner/Admin/PromptEditor) may pin a model; for a Member the client value is
+        // ignored and we always fall back to the team default — so an empty pick never blocks a generation.
+        var requestedModel = currentUser.CanChooseModel ? req.Model : null;
+        var model = !string.IsNullOrWhiteSpace(requestedModel)
+            ? requestedModel!.Trim()
             : settings?.DefaultModel ?? GenerationDefaults.FallbackModel;
         var userId = currentUser.UserId ?? string.Empty;
 
@@ -194,12 +197,14 @@ public sealed class GenerationService(
             versionId = prompt.MainVersionId ?? existing.PromptVersionId;
         }
 
+        // A Member can regenerate but not switch models — ignore any client model and keep the original's.
+        var chosenModel = currentUser.CanChooseModel ? model : null;
         var session = new GenerationSession
         {
             ScriptId = existing.ScriptId,
             PromptId = existing.PromptId,
             PromptVersionId = versionId,
-            Model = string.IsNullOrWhiteSpace(model) ? existing.Model : model!.Trim(),
+            Model = string.IsNullOrWhiteSpace(chosenModel) ? existing.Model : chosenModel!.Trim(),
             Status = SessionStatus.Queued,
             CreatedByUserId = currentUser.UserId ?? string.Empty,
         };

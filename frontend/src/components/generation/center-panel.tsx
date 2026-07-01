@@ -22,6 +22,7 @@ import { ModelPicker } from "@/components/generation/model-picker";
 import { SelectionTray } from "@/components/tray/selection-tray";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/lib/auth/auth-context";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function CenterPanel() {
     setFocusSummaryOnly,
   } = useWorkspace();
   const { subscribeScript } = useGenerationStream();
+  const { canChooseModel, canGenerate, isPrivileged } = useAuth();
   const gen = usePostApiGeneration();
   const clearCanvas = useDeleteApiScriptsIdSessions();
   const [generating, setGenerating] = useState(false);
@@ -114,9 +116,11 @@ export function CenterPanel() {
   const missing = [
     scriptIds.length === 0 && "a script (check one on the left)",
     selectedPromptIds.length === 0 && "a prompt",
-    runModels.length === 0 && "a model",
+    // Only model-choosers must pick a model; for everyone else the server resolves the default, so an
+    // empty model selection must NOT block Generate (that would strand a Member with no way forward).
+    canChooseModel && runModels.length === 0 && "a model",
   ].filter(Boolean) as string[];
-  const canGenerate = missing.length === 0 && !generating;
+  const readyToGenerate = missing.length === 0 && !generating;
 
   const allGroups = useMemo(
     () => groupByPrompt(sessions ?? [], promptOrder, summaryPromptIds),
@@ -131,10 +135,11 @@ export function CenterPanel() {
   const hasResults = groups.length > 0;
 
   const onGenerate = async () => {
-    if (!canGenerate) return;
+    if (!readyToGenerate) return;
     // Remember this prompt+model selection so a newly added script can inherit it (#12).
     rememberRunSetup();
-    const models = runModels.length > 0 ? runModels : [null];
+    // Model-choosers fan out one request per picked model; everyone else sends null → server default.
+    const models = canChooseModel && runModels.length > 0 ? runModels : [null];
     // Resolve each prompt's version now: a pinned version, else null = the prompt's current main.
     const prompts = selectedPromptIds.map((promptId) => ({
       promptId,
@@ -226,7 +231,7 @@ export function CenterPanel() {
               Highlights
             </button>
           )}
-          {hasResults && (
+          {hasResults && isPrivileged && (
             <button
               onClick={onClearCanvas}
               disabled={clearCanvas.isPending}
@@ -263,23 +268,27 @@ export function CenterPanel() {
           </div>
         </div>
         <div className="flex flex-1 basis-0 items-center justify-end gap-2.5">
-          <ModelPicker />
-          <Button
-            onClick={onGenerate}
-            disabled={!canGenerate}
-            title={missing.length ? `Pick ${missing.join(", ")} first` : undefined}
-            className="h-9 min-w-[132px] justify-center gap-1.5 rounded-md text-[13.5px]"
-          >
-            {generating ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Generating…
-              </>
-            ) : (
-              <>
-                <Sparkles className="size-4" /> Generate
-              </>
-            )}
-          </Button>
+          {/* Model picker only for those who may choose a model; Members/Viewers use the team default. */}
+          {canChooseModel && <ModelPicker />}
+          {/* Generate is Member+; Viewer never sees it (read-only). */}
+          {canGenerate && (
+            <Button
+              onClick={onGenerate}
+              disabled={!readyToGenerate}
+              title={missing.length ? `Pick ${missing.join(", ")} first` : undefined}
+              className="h-9 min-w-[132px] justify-center gap-1.5 rounded-md text-[13.5px]"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" /> Generate
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -308,13 +317,21 @@ export function CenterPanel() {
           ) : (
             <CenterEmpty
               title="No results yet"
-              body="Pick a script on the left and one or more prompts on the right, choose which AI models to run, then hit Generate."
+              body={
+                canGenerate
+                  ? "Pick a script on the left and one or more prompts on the right, choose which AI models to run, then hit Generate."
+                  : "Generated results will appear here once the team runs this script."
+              }
             />
           )
         ) : !hasResults ? (
           <CenterEmpty
             title="No results yet"
-            body="Pick a script on the left and one or more prompts on the right, choose which AI models to run, then hit Generate. Every prompt runs against each model you pick — compare them side by side and keep the winners."
+            body={
+              canGenerate
+                ? "Pick a script on the left and one or more prompts on the right, choose which AI models to run, then hit Generate. Every prompt runs against each model you pick — compare them side by side and keep the winners."
+                : "Generated results will appear here once the team runs this script — you can copy, favourite and highlight them."
+            }
           />
         ) : view === "columns" ? (
           <ColumnsView groups={groups} scriptId={activeScriptId} />

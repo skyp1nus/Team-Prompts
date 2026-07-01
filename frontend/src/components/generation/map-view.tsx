@@ -232,6 +232,7 @@ export function MapView({
   projectId: string | null;
 }) {
   const qc = useQueryClient();
+  const { isPrivileged } = useAuth();
   const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly } = useWorkspace();
   const summaryKey = summary ? summaryKeyFor(scriptId) : null;
   const [menuOpen, setMenuOpen] = useState(true);
@@ -804,6 +805,7 @@ export function MapView({
         onFit={fit}
         onResetLayout={onResetLayout}
         resetPending={resetCanvas.isPending}
+        canResetLayout={isPrivileged}
       />
     </div>
   );
@@ -826,6 +828,7 @@ function MapMenu({
   onFit,
   onResetLayout,
   resetPending,
+  canResetLayout,
 }: {
   open: boolean;
   onToggleOpen: () => void;
@@ -840,6 +843,8 @@ function MapMenu({
   onFit: () => void;
   onResetLayout: () => void;
   resetPending: boolean;
+  /** Owner/Admin — resetting the shared layout wipes saved positions (DELETE canvas). */
+  canResetLayout: boolean;
 }) {
   if (!open) {
     return (
@@ -920,16 +925,18 @@ function MapMenu({
         </ZoomBtn>
       </div>
 
-      {/* reset every block back to auto-layout */}
-      <button
-        onClick={onResetLayout}
-        disabled={resetPending}
-        title="Tidy every block back into place"
-        className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-      >
-        {resetPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
-        Reset layout
-      </button>
+      {/* reset every block back to auto-layout — wipes shared saved positions, so Owner/Admin only */}
+      {canResetLayout && (
+        <button
+          onClick={onResetLayout}
+          disabled={resetPending}
+          title="Tidy every block back into place"
+          className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border px-2.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+        >
+          {resetPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+          Reset layout
+        </button>
+      )}
     </div>
   );
 }
@@ -990,6 +997,7 @@ function SummaryNode({
   scriptId: string;
 }) {
   const qc = useQueryClient();
+  const { canGenerate } = useAuth();
   const regen = usePostApiScriptProjectsIdSummaryRegenerate();
   const [expanded, setExpanded] = useState(false);
   const status = summary.variantStatus as SessionStatus | null | undefined;
@@ -1067,15 +1075,18 @@ function SummaryNode({
           <span className="truncate">{summary.model ? modelLabel(summary.model) : "Summary"}</span>
         </span>
         <span className="flex-1" />
-        <button
-          onClick={regenerate}
-          disabled={regen.isPending || pending || !projectId}
-          title="Regenerate the Summary from the master prompt"
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-600/90 disabled:opacity-50"
-        >
-          {regen.isPending || pending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
-          Regenerate
-        </button>
+        {/* Regenerating the Summary is a generation action — Member+; Viewer sees it read-only. */}
+        {canGenerate && (
+          <button
+            onClick={regenerate}
+            disabled={regen.isPending || pending || !projectId}
+            title="Regenerate the Summary from the master prompt"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-600/90 disabled:opacity-50"
+          >
+            {regen.isPending || pending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
+            Regenerate
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1111,6 +1122,7 @@ function PromptNode({
   onHover: (hovering: boolean) => void;
 }) {
   const qc = useQueryClient();
+  const { canGenerate, canChooseModel } = useAuth();
   const { promptVersions } = useWorkspace();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const total = group.sessions.reduce((a, s) => a + s.results.length, 0);
@@ -1200,33 +1212,38 @@ function PromptNode({
             <b className="font-bold text-foreground tabular-nums">{total}</b> result{total === 1 ? "" : "s"}
           </p>
 
-          {/* run button pinned bottom-right (design .fn-run) */}
-          <button
-            onClick={regenMore}
-            disabled={regen.isPending}
-            className="absolute right-3 bottom-3 flex h-[29px] items-center gap-1.5 rounded-lg bg-primary pr-2.5 pl-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
-          >
-            {regen.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-            Generate
-          </button>
+          {/* run button pinned bottom-right (design .fn-run) — Member+; Viewer views only. */}
+          {canGenerate && (
+            <button
+              onClick={regenMore}
+              disabled={regen.isPending}
+              className="absolute right-3 bottom-3 flex h-[29px] items-center gap-1.5 rounded-lg bg-primary pr-2.5 pl-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
+            >
+              {regen.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              Generate
+            </button>
+          )}
         </div>
       </div>
 
-      {/* fn-bar — detached footer toolbar */}
-      <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
-        <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
-          <FileText className="size-3.5 shrink-0 text-faint" />
-          <span className="truncate">{modelCount} model{modelCount === 1 ? "" : "s"}</span>
-        </span>
-        <span className="flex-1" />
-        <div className="flex w-[112px]">
-          <AddModelMenu
-            onPick={addModel}
-            existing={group.sessions.map((s) => s.session.model)}
-            disabled={regen.isPending}
-          />
+      {/* fn-bar — detached footer toolbar. The add-model menu is model-chooser-only (Owner/Admin/
+          PromptEditor); everyone else runs on the team default, so there's nothing to add here. */}
+      {canChooseModel && (
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
+          <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
+            <FileText className="size-3.5 shrink-0 text-faint" />
+            <span className="truncate">{modelCount} model{modelCount === 1 ? "" : "s"}</span>
+          </span>
+          <span className="flex-1" />
+          <div className="flex w-[112px]">
+            <AddModelMenu
+              onPick={addModel}
+              existing={group.sessions.map((s) => s.session.model)}
+              disabled={regen.isPending}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1267,7 +1284,7 @@ function OutputNode({
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
-  const { isPrivileged } = useAuth();
+  const { isPrivileged, canGenerate } = useAuth();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const copyEvent = usePostApiResultsResultIdCopy();
   const deleteRun = useDeleteApiGenerationSessionsSessionId();
@@ -1470,7 +1487,7 @@ function OutputNode({
             {copied ? <Check className="size-3.5 text-primary" /> : <Copy className="size-3.5" />}
           </button>
         )}
-        {!newestFailed && (
+        {!newestFailed && canGenerate && (
           <button
             onClick={generateMore}
             disabled={regen.isPending || anyStreaming || anyWaiting}
@@ -1648,7 +1665,7 @@ function RunBlock({
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
-  const { isPrivileged } = useAuth();
+  const { isPrivileged, canGenerate } = useAuth();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const deleteRun = useDeleteApiGenerationSessionsSessionId();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1724,19 +1741,22 @@ function RunBlock({
                 : "Generation failed."
               : "No results."}
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={retry}
-            disabled={regen.isPending}
-            className="h-7 gap-1.5 px-2.5 text-[11.5px]"
-          >
-            <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
-            Try again
-          </Button>
+          {/* Retry re-runs the generation — Member+; Viewer just sees the status. */}
+          {canGenerate && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={retry}
+              disabled={regen.isPending}
+              className="h-7 gap-1.5 px-2.5 text-[11.5px]"
+            >
+              <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+              Try again
+            </Button>
+          )}
         </div>
       )}
-      {!streaming && failed && results.length > 0 && (
+      {!streaming && failed && results.length > 0 && canGenerate && (
         <button
           onClick={retry}
           disabled={regen.isPending}

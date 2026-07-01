@@ -19,6 +19,7 @@ public sealed class WorkspacesController(IWorkspaceService workspaces) : Control
         => await workspaces.GetAsync(id, ct) is { } dto ? Ok(dto) : NotFound();
 
     [HttpPost]
+    [Authorize(Policy = "Admin")]
     public async Task<ActionResult<WorkspaceDto>> Create(CreateWorkspaceRequest req, CancellationToken ct)
     {
         var dto = await workspaces.CreateAsync(req, ct);
@@ -26,10 +27,12 @@ public sealed class WorkspacesController(IWorkspaceService workspaces) : Control
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Admin")]
     public async Task<ActionResult<WorkspaceDto>> Update(Guid id, UpdateWorkspaceRequest req, CancellationToken ct)
         => Ok(await workspaces.UpdateAsync(id, req, ct));
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Admin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         await workspaces.DeleteAsync(id, ct);
@@ -38,6 +41,7 @@ public sealed class WorkspacesController(IWorkspaceService workspaces) : Control
 
     /// <summary>Upload (or replace) the workspace's dock avatar.</summary>
     [HttpPost("{id:guid}/avatar")]
+    [Authorize(Policy = "Admin")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<ActionResult<WorkspaceDto>> SetAvatar(Guid id, [FromForm] IFormFile file, CancellationToken ct)
     {

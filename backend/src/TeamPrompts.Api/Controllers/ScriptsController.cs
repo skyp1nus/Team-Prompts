@@ -22,6 +22,7 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
         => await scripts.GetAsync(id, ct) is { } dto ? Ok(dto) : NotFound();
 
     [HttpPost]
+    [Authorize(Policy = "Member")]
     [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<ActionResult<ScriptDto>> Upload(
         [FromForm] Guid workspaceId, [FromForm] IFormFile file, [FromForm] string? name, CancellationToken ct)
@@ -35,10 +36,12 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Member")]
     public async Task<ActionResult<ScriptDto>> Rename(Guid id, UpdateScriptRequest req, CancellationToken ct)
         => Ok(await scripts.RenameAsync(id, req.Name, ct));
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Admin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         await scripts.DeleteAsync(id, ct);
@@ -57,8 +60,10 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
         Guid id, [FromServices] IGenerationService generation, CancellationToken ct)
         => Ok(await generation.GetTrayAsync(id, ct));
 
-    /// <summary>Clear the whole generation canvas for this script — deletes every run + result.</summary>
+    /// <summary>Clear the whole generation canvas for this script — deletes every run + result.
+    /// Destructive + shared, so Owner/Admin only (matches the per-run/whole-output delete gates).</summary>
     [HttpDelete("{id:guid}/sessions")]
+    [Authorize(Policy = "Admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ClearSessions(
         Guid id, [FromServices] IGenerationService generation, CancellationToken ct)
@@ -85,8 +90,11 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Reset the map back to auto-layout — clears every saved position for this script.</summary>
+    /// <summary>Reset the map back to auto-layout — clears every saved position for this script.
+    /// Wipes shared layout state, so Owner/Admin only. (Dragging a single block — PUT canvas — stays
+    /// open so the map layout is collaborative.)</summary>
     [HttpDelete("{id:guid}/canvas")]
+    [Authorize(Policy = "Admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> ResetCanvas(
         Guid id, [FromServices] ICanvasService canvas, CancellationToken ct)

@@ -33,12 +33,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function PromptsPanel() {
   const qc = useQueryClient();
+  // Members see prompt names here (to pick for a run) but not content: no create/open/edit/reorder.
+  // Only Owner/Admin may delete. (Viewers never reach this panel — app-shell hides it.)
+  const { canEditPrompts, isPrivileged } = useAuth();
   const {
     activeWorkspaceId,
     selectedPromptIds,
@@ -124,7 +128,7 @@ export function PromptsPanel() {
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h2 className="eyebrow">Prompt Library</h2>
         <div className="flex items-center gap-1.5">
-          <CreatePromptDialog />
+          {canEditPrompts && <CreatePromptDialog />}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -187,6 +191,8 @@ export function PromptsPanel() {
           {!isLoading && masterSummary && (!kindFilter || kindFilter === PromptKind.Summary) && (
             <MasterSummaryRow
               prompt={masterSummary}
+              canEdit={canEditPrompts}
+              canDelete={isPrivileged}
               onOpen={() => setOpenPromptId(masterSummary.id)}
               onDelete={() => onDelete(masterSummary.id, masterSummary.name)}
             />
@@ -208,6 +214,8 @@ export function PromptsPanel() {
                     prompt={p}
                     selected={selectedPromptIds.includes(p.id)}
                     pinnedVersion={promptVersions[p.id]?.number ?? null}
+                    canEdit={canEditPrompts}
+                    canDelete={isPrivileged}
                     onToggle={() => togglePrompt(p.id)}
                     onOpen={() => setOpenPromptId(p.id)}
                     onDelete={() => onDelete(p.id, p.name)}
@@ -233,18 +241,31 @@ export function PromptsPanel() {
  *  as the mind map); not draggable. */
 function MasterSummaryRow({
   prompt,
+  canEdit,
+  canDelete,
   onOpen,
   onDelete,
 }: {
   prompt: PromptListItemDto;
+  /** Owner/Admin/PromptEditor — may open the content/versions dialog. */
+  canEdit: boolean;
+  /** Owner/Admin — may delete. */
+  canDelete: boolean;
   onOpen: () => void;
   onDelete: () => void;
 }) {
   return (
     <div
-      onClick={onOpen}
-      title="The mind-map source — auto-runs on each script's first generation"
-      className="group relative mb-2 flex cursor-pointer items-start gap-2 rounded-lg border-[1.5px] border-violet-400/70 bg-violet-500/[0.05] p-2.5 transition-colors hover:bg-violet-500/[0.09]"
+      onClick={canEdit ? onOpen : undefined}
+      title={
+        canEdit
+          ? "The mind-map source — auto-runs on each script's first generation"
+          : "The mind-map source — auto-runs on each script's first generation"
+      }
+      className={cn(
+        "group relative mb-2 flex items-start gap-2 rounded-lg border-[1.5px] border-violet-400/70 bg-violet-500/[0.05] p-2.5 transition-colors",
+        canEdit && "cursor-pointer hover:bg-violet-500/[0.09]",
+      )}
     >
       <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400">
         <Network className="size-3.5" />
@@ -260,26 +281,30 @@ function MasterSummaryRow({
           </span>
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
-        title="History & versions"
-      >
-        <SlidersHorizontal className="size-3.5" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
-        title="Delete prompt"
-      >
-        <X className="size-3.5" />
-      </button>
+      {canEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+          title="History & versions"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      )}
+      {canDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+          title="Delete prompt"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -288,6 +313,8 @@ function PromptRow({
   prompt,
   selected,
   pinnedVersion,
+  canEdit,
+  canDelete,
   onToggle,
   onOpen,
   onDelete,
@@ -296,6 +323,10 @@ function PromptRow({
   selected: boolean;
   /** "vN" pinned for the next run, or null to follow Main. */
   pinnedVersion: number | null;
+  /** Owner/Admin/PromptEditor — may reorder + open content/versions. */
+  canEdit: boolean;
+  /** Owner/Admin — may delete. */
+  canDelete: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -316,16 +347,19 @@ function PromptRow({
         isDragging && "z-10 opacity-60",
       )}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-foreground"
-        aria-label="Drag to reorder"
-        title="Drag to reorder"
-      >
-        <GripVertical className="size-3.5" />
-      </button>
+      {/* Reorder handle — PromptEditor+ only. Members select but can't reorder the shared library. */}
+      {canEdit && (
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-foreground"
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      )}
       <span
         className={cn(
           "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
@@ -390,26 +424,30 @@ function PromptRow({
           </span>
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
-        title="History & versions"
-      >
-        <SlidersHorizontal className="size-3.5" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
-        title="Delete prompt"
-      >
-        <X className="size-3.5" />
-      </button>
+      {canEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+          title="History & versions"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      )}
+      {canDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+          title="Delete prompt"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

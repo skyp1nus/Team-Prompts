@@ -51,7 +51,9 @@ fetch. Forms via RHF + Zod (no native `<form>` submit semantics fighting). shadc
 
 ## Domain model (no categories)
 
-- **AppUser** : IdentityUser — `DisplayName`. Email = login id. Roles `Admin`/`Member` via policies.
+- **AppUser** : IdentityUser — `DisplayName`. Email = login id. **5 tiered roles** via policies:
+  `Owner`⊇`Admin`⊇`PromptEditor`⊇`Member`⊇`Viewer` (policies `Admin`/`PromptEditor`/`Member`; Viewer holds
+  none = read-only). Model choice, prompt-content viewing/editing, and all deletes are role-gated.
 - **Script** — `Name`, `OriginalFileName`, `FileType` (Pdf|Txt), `ExtractedText`, `StorageKey`
   (original file via IFileStorage), `CreatedByUserId`, timestamps.
 - **Prompt** — `Name`, `CreatedByUserId`, `MainVersionId` → PromptVersion.

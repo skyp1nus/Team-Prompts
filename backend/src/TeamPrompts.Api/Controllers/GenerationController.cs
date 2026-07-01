@@ -10,13 +10,18 @@ namespace TeamPrompts.Api.Controllers;
 [Authorize]
 public sealed class GenerationController(IGenerationService generation) : ControllerBase
 {
-    /// <summary>Single or batch: scripts × prompts → one session each (one Run when more than one).</summary>
+    /// <summary>Single or batch: scripts × prompts → one session each (one Run when more than one).
+    /// Member+ (Viewer can't generate). A Member's client-supplied model is ignored server-side —
+    /// the default is resolved so nobody is ever stuck on an empty model pick.</summary>
     [HttpPost]
+    [Authorize(Policy = "Member")]
     public async Task<ActionResult<GenerationRunDto>> Create(CreateGenerationRequest req, CancellationToken ct)
         => Ok(await generation.CreateAsync(req, ct));
 
-    /// <summary>Regenerate / "try another model": new session for the same script + prompt-version.</summary>
+    /// <summary>Regenerate / "try another model": new session for the same script + prompt-version.
+    /// Member+; only model-choosers (Owner/Admin/PromptEditor) can actually switch the model.</summary>
     [HttpPost("sessions/{sessionId:guid}/regenerate")]
+    [Authorize(Policy = "Member")]
     public async Task<ActionResult<SessionDto>> Regenerate(Guid sessionId, RegenerateRequest req, CancellationToken ct)
         => Ok(await generation.RegenerateAsync(sessionId, req.Model, req.PromptVersionId, ct));
 

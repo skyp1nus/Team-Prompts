@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/auth-context";
 import { formatRelative } from "@/lib/format";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ function inProgress(s: ScriptDto["variantStatus"]) {
 
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
+  const { canGenerate } = useAuth();
   const { activeWorkspaceId, expandedProjectIds, setScriptsPanelCollapsed } = useWorkspace();
 
   const params = { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) };
@@ -98,9 +100,12 @@ export function ScriptsPanel() {
         </div>
       </div>
 
-      <div className="px-3.5 pb-2">
-        <UploadDialog />
-      </div>
+      {/* Upload (create project) — Member+ only. Viewer browses existing projects read-only. */}
+      {canGenerate && (
+        <div className="px-3.5 pb-2">
+          <UploadDialog />
+        </div>
+      )}
 
       <ScrollArea className="flex-1">
         <div className="px-2.5 pt-0.5 pb-4">
@@ -126,6 +131,7 @@ export function ScriptsPanel() {
 
 function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDto; expanded: boolean }) {
   const qc = useQueryClient();
+  const { canGenerate, isPrivileged } = useAuth();
   const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
     useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
@@ -241,38 +247,45 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
               <Folder className="size-[18px] shrink-0 text-primary/80" />
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
             </CollapsibleTrigger>
-            <div className="flex shrink-0 items-center pr-1.5">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button
-                      aria-label="Project actions"
-                      title="More"
-                      className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
-                    >
-                      <MoreHorizontal className="size-4" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
-                  <DropdownMenuItem
-                    onClick={() => setDraft(project.name)}
-                    className="whitespace-nowrap px-2 py-1.5"
-                  >
-                    <Pencil />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={onDeleteProject}
-                    className="whitespace-nowrap px-2 py-1.5"
-                  >
-                    <X />
-                    Delete project
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            {/* Project actions — rename is Member+, delete is Owner/Admin. Viewer sees no menu at all. */}
+            {(canGenerate || isPrivileged) && (
+              <div className="flex shrink-0 items-center pr-1.5">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <button
+                        aria-label="Project actions"
+                        title="More"
+                        className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </button>
+                    }
+                  />
+                  <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
+                    {canGenerate && (
+                      <DropdownMenuItem
+                        onClick={() => setDraft(project.name)}
+                        className="whitespace-nowrap px-2 py-1.5"
+                      >
+                        <Pencil />
+                        Rename
+                      </DropdownMenuItem>
+                    )}
+                    {isPrivileged && (
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={onDeleteProject}
+                        className="whitespace-nowrap px-2 py-1.5"
+                      >
+                        <X />
+                        Delete project
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -335,6 +348,7 @@ function KeywordsLeaf({
   projectName: string;
   keywords: ScriptDto | null;
 }) {
+  const { canGenerate } = useAuth();
   const [open, setOpen] = useState(false);
   const isEmpty = (keywords?.extractedText ?? "").trim().length === 0;
 
@@ -358,21 +372,24 @@ function KeywordsLeaf({
             </span>
           )}
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
-          className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
-          title="Edit keywords"
-        >
-          <Pencil className="size-3.5" />
-        </button>
+        {canGenerate && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+            className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
+            title="Edit keywords"
+          >
+            <Pencil className="size-3.5" />
+          </button>
+        )}
       </div>
       <KeywordsDialog
         projectId={projectId}
         projectName={projectName}
         keywords={keywords}
+        canEdit={canGenerate}
         open={open}
         onOpenChange={setOpen}
       />
@@ -396,6 +413,7 @@ function ScriptLeaf({
   projectId?: string;
 }) {
   const qc = useQueryClient();
+  const { canGenerate, isPrivileged } = useAuth();
   const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript } = useWorkspace();
   const delVariant = useDeleteApiScriptProjectsIdVariantsVariantId();
   const [viewOpen, setViewOpen] = useState(false);
@@ -431,22 +449,27 @@ function ScriptLeaf({
         active && "bg-primary/[0.07]",
       )}
     >
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={selected}
-        aria-label={selected ? "Remove from batch" : "Add to batch"}
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleBatchScript(script.id);
-        }}
-        className={cn(
-          "flex size-[18px] shrink-0 items-center justify-center rounded border-[1.5px] text-[10px] transition-colors",
-          selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
-        )}
-      >
-        {selected && <Check className="size-2.5" />}
-      </button>
+      {/* Batch-select checkbox arms a generation — Member+ only. Viewer gets an aligning spacer. */}
+      {canGenerate ? (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={selected ? "Remove from batch" : "Add to batch"}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleBatchScript(script.id);
+          }}
+          className={cn(
+            "flex size-[18px] shrink-0 items-center justify-center rounded border-[1.5px] text-[10px] transition-colors",
+            selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
+          )}
+        >
+          {selected && <Check className="size-2.5" />}
+        </button>
+      ) : (
+        <span className="size-[18px] shrink-0" />
+      )}
 
       <span
         className={cn(
@@ -501,7 +524,7 @@ function ScriptLeaf({
           <Eye className="size-3.5" />
         </button>
       )}
-      {isVariant && !busy && (
+      {isVariant && !busy && isPrivileged && (
         <button
           onClick={onDelete}
           className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
