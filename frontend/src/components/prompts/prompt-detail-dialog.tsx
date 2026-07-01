@@ -147,6 +147,9 @@ function DetailPanel({
   const main = versions.find((v) => v.isMain) ?? versions[versions.length - 1];
   // Which version the next run will use for this prompt: an explicit pin, else the current main.
   const activeVersionId = promptVersions[promptId]?.versionId ?? main?.id ?? null;
+  // A Summary-KIND prompt is the mind-map builder: its output IS the Summary node, so it's never a manual
+  // run — the "Use for generation" action is hidden (the backend would create no session for it).
+  const isSummaryPrompt = kind === PromptKind.Summary;
 
   // The workspace-static "Unique" prompts (Summary master, Tags, Description) are seeded empty. Until the
   // team writes their instructions they can't run on the mind map — surface a prominent setup step. Hide
@@ -158,6 +161,7 @@ function DetailPanel({
   // Pick a version for the next generation. Choosing main clears the pin so the run keeps following
   // whatever the team promotes; choosing any other version pins it. Also selects the prompt for the run.
   const applyForGeneration = (v: PromptVersionDto, idx: number) => {
+    if (isSummaryPrompt) return; // builders never run as lanes — guard the (hidden) action defensively
     setPromptVersion(promptId, v.isMain ? null : { versionId: v.id, number: idx + 1 });
     if (!selectedPromptIds.includes(promptId)) togglePrompt(promptId);
     toast.success(v.isMain ? "The next run will follow Main" : `The next run will use v${idx + 1}`);
@@ -286,9 +290,11 @@ function DetailPanel({
                     </div>
                     {v.note && <div className="mt-1.5 text-[12.5px] leading-snug text-muted-foreground">{v.note}</div>}
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      <MiniBtn accent={activeVersionId === v.id} onClick={() => applyForGeneration(v, idx)}>
-                        {activeVersionId === v.id ? "✓ Using for next run" : "Use for generation"}
-                      </MiniBtn>
+                      {!isSummaryPrompt && (
+                        <MiniBtn accent={activeVersionId === v.id} onClick={() => applyForGeneration(v, idx)}>
+                          {activeVersionId === v.id ? "✓ Using for next run" : "Use for generation"}
+                        </MiniBtn>
+                      )}
                       {!v.isMain && (
                         <MiniBtn onClick={() => doPromote(v.id)} disabled={promote.isPending}>
                           Make this the team version

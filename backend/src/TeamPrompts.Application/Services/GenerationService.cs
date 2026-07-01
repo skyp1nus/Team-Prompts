@@ -95,30 +95,27 @@ public sealed class GenerationService(
         // script id + whether it's ready now or the dependent must park as Waiting until it finishes.
         var summaryPlans = await summaries.EnsureForScriptsAsync(scriptIds, model, ct);
 
-        GenerationRun? run = null;
-        if (scriptIds.Count * promptIds.Count > 1)
-        {
-            run = new GenerationRun { CreatedByUserId = userId, Status = RunStatus.Running };
-            db.GenerationRuns.Add(run);
-        }
-
-        // Summary-related prompts (Summary KIND or summary-tagged) run AGAINST the Summary script. Every
-        // session is created up-front so its node shows immediately; the summary-dependent ones are parked
-        // Waiting (not enqueued) until the Summary finishes, then its executor releases them. Everything
-        // else runs against the Original right away.
+        // Build the canvas sessions. A Summary-KIND prompt is the mind-map BUILDER: its output IS the
+        // Summary node (ensured above via the variant pipeline), so it must NOT spawn a canvas session —
+        // doing so would re-run it against its own Summary script and duplicate the mind map. Only a
+        // summary-TAGGED prompt (UseSummarySource) is a CONSUMER that runs against the Summary script:
+        // its session is created up-front (so its node shows immediately) but parked Waiting (not enqueued)
+        // until the Summary finishes, then its executor releases it. Everything else runs against the
+        // Original right away.
         var sessions = new List<GenerationSession>();
         var waitingSummaryIds = new HashSet<Guid>();
         foreach (var sid in scriptIds)
         foreach (var pid in promptIds)
         {
             var p = promptById[pid];
-            var summaryRelated = p.UseSummarySource || p.Kind == PromptKind.Summary;
+            if (p.Kind == PromptKind.Summary) continue; // builder → represented solely by the Summary node
+
             var scriptForSession = sid;
             var status = SessionStatus.Queued;
-            // A summary-related prompt runs against the project's Summary (parked Waiting until it's ready).
+            // A summary-tagged prompt runs against the project's Summary (parked Waiting until it's ready).
             // If there's no resolvable Summary (e.g. the workspace has no Summary prompt at all), fall back
             // to running it against the script itself — never fail the whole generation.
-            if (summaryRelated && summaryPlans.TryGetValue(sid, out var plan))
+            if (p.UseSummarySource && summaryPlans.TryGetValue(sid, out var plan))
             {
                 scriptForSession = plan.SummaryScriptId;
                 if (!plan.IsCompleted)
@@ -130,7 +127,6 @@ public sealed class GenerationService(
 
             sessions.Add(new GenerationSession
             {
-                RunId = run?.Id,
                 ScriptId = scriptForSession,
                 PromptId = pid,
                 PromptVersionId = versionByPrompt[pid],
@@ -139,6 +135,22 @@ public sealed class GenerationService(
                 CreatedByUserId = userId,
             });
         }
+
+        // Selecting only Summary-KIND builder prompt(s) yields no session — the mind map (ensured above)
+        // is the entire result. Nothing to enqueue or log; hand back an empty run so the caller just
+        // refreshes and surfaces the (possibly new) Summary node.
+        if (sessions.Count == 0)
+            return new GenerationRunDto(null, []);
+
+        // A batch run groups >1 ACTUAL session (skipped builders don't count). A single session → no run.
+        GenerationRun? run = null;
+        if (sessions.Count > 1)
+        {
+            run = new GenerationRun { CreatedByUserId = userId, Status = RunStatus.Running };
+            db.GenerationRuns.Add(run);
+            foreach (var s in sessions) s.RunId = run.Id;
+        }
+
         db.GenerationSessions.AddRange(sessions);
         await db.SaveChangesAsync(ct);
 
