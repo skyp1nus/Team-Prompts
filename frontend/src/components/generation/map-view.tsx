@@ -2,6 +2,7 @@
 
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
+  BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
@@ -536,10 +537,20 @@ export function MapView({
     }
   };
 
-  const zoomCenter = (factor: number) => {
+  /** Step zoom by ±10 percentage points, snapped to the nearest 10% so clicks land on round values. */
+  const zoomStep = (dir: 1 | -1) => {
     const vp = viewportRef.current;
     if (!vp) return;
-    zoomAt(tRef.current.z * factor, vp.clientWidth / 2, vp.clientHeight / 2);
+    const curPct = Math.round(tRef.current.z * 100);
+    const nextPct = Math.round(curPct / 10) * 10 + dir * 10;
+    zoomAt(nextPct / 100, vp.clientWidth / 2, vp.clientHeight / 2);
+  };
+
+  /** "Read" — jump to a comfortable 160% reading zoom, centered. */
+  const zoomRead = () => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    zoomAt(1.6, vp.clientWidth / 2, vp.clientHeight / 2);
   };
 
   const fit = useCallback(() => {
@@ -796,8 +807,9 @@ export function MapView({
         highlightsOnly={showHighlightsOnly}
         onToggleHighlights={() => setShowHighlightsOnly(!showHighlightsOnly)}
         zoomPct={Math.round(t.z * 100)}
-        onZoomOut={() => zoomCenter(1 / 1.6)}
-        onZoomIn={() => zoomCenter(1.6)}
+        onZoomOut={() => zoomStep(-1)}
+        onZoomIn={() => zoomStep(1)}
+        onRead={zoomRead}
         onZoomReset={() =>
           zoomAt(1, (viewportRef.current?.clientWidth ?? 0) / 2, (viewportRef.current?.clientHeight ?? 0) / 2)
         }
@@ -822,6 +834,7 @@ function MapMenu({
   zoomPct,
   onZoomOut,
   onZoomIn,
+  onRead,
   onZoomReset,
   onFit,
   onResetLayout,
@@ -836,6 +849,7 @@ function MapMenu({
   zoomPct: number;
   onZoomOut: () => void;
   onZoomIn: () => void;
+  onRead: () => void;
   onZoomReset: () => void;
   onFit: () => void;
   onResetLayout: () => void;
@@ -917,6 +931,9 @@ function MapMenu({
         <span className="mx-0.5 h-[18px] w-px bg-border" />
         <ZoomBtn onClick={onFit} label="Fit to view">
           <Maximize2 className="size-4" />
+        </ZoomBtn>
+        <ZoomBtn onClick={onRead} label="Read (160%)">
+          <BookOpen className="size-4" />
         </ZoomBtn>
       </div>
 
