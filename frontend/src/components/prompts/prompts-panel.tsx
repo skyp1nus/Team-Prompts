@@ -44,6 +44,15 @@ import { cn } from "@/lib/utils";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
+// value→label map so the Base UI Select trigger renders the capitalized label instead of the raw
+// lowercase value ("summary"). Base UI reads the trigger text from `items`, not the mounted children.
+const FILTER_ITEMS = [
+  { label: "All prompts", value: "all" },
+  { label: "Main Scripts", value: "main" },
+  { label: "Summary", value: "summary" },
+  { label: "Unique", value: "unique" },
+] as const;
+
 export function PromptsPanel() {
   const qc = useQueryClient();
   // Members see prompt names here (to pick for a run) but not content: no create/open/edit/reorder.
@@ -99,15 +108,23 @@ export function PromptsPanel() {
     p.kind === PromptKind.Tags || p.kind === PromptKind.Description;
   const showSummary = filter === "all" || filter === "summary";
   const showUnique = filter === "all" || filter === "unique";
-  const showMain = filter === "all" || filter === "main";
-  const sortable = (prompts ?? []).filter(
-    (p) => p.id !== masterSummaryId && !isStatic(p) && (filter !== "main" || p.kind === PromptKind.MainScripts),
-  );
+  // The sortable library list, scoped to the active filter:
+  //  · summary → prompts tagged "run against the Summary" (useSummarySource)
+  //  · main    → regular MainScripts (untagged — summary-tagged ones live under the Summary filter)
+  //  · unique  → none (Tags/Description render as pinned cards, not here)
+  //  · all     → every non-pinned prompt
+  const sortable = (prompts ?? []).filter((p) => {
+    if (p.id === masterSummaryId || isStatic(p)) return false;
+    if (filter === "summary") return p.useSummarySource;
+    if (filter === "main") return p.kind === PromptKind.MainScripts && !p.useSummarySource;
+    if (filter === "unique") return false;
+    return true; // "all"
+  });
   const masterSummaryShown = !!masterSummary && showSummary;
   const tagsShown = !!tagsPrompt && showUnique;
   const descriptionShown = !!descriptionPrompt && showUnique;
   const anyStaticShown = masterSummaryShown || tagsShown || descriptionShown;
-  const sortableShown = showMain && sortable.length > 0;
+  const sortableShown = sortable.length > 0;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -186,15 +203,20 @@ export function PromptsPanel() {
         {n === 0 ? "No prompts selected" : `${n} prompt${n === 1 ? "" : "s"} selected`}
       </div>
       <div className="px-3.5 pb-2.5">
-        <Select value={filter} onValueChange={(v) => v && setFilter(v as "all" | "main" | "summary" | "unique")}>
+        <Select
+          items={FILTER_ITEMS}
+          value={filter}
+          onValueChange={(v) => v && setFilter(v as "all" | "main" | "summary" | "unique")}
+        >
           <SelectTrigger size="sm" className="w-full">
             <SelectValue placeholder="Filter prompts" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All prompts</SelectItem>
-            <SelectItem value="main">Main Scripts</SelectItem>
-            <SelectItem value="summary">Summary</SelectItem>
-            <SelectItem value="unique">Unique</SelectItem>
+            {FILTER_ITEMS.map((it) => (
+              <SelectItem key={it.value} value={it.value}>
+                {it.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -231,7 +253,13 @@ export function PromptsPanel() {
 
           {!isLoading && !sortableShown && !anyStaticShown && (
             <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
-              {filter === "main" ? "No Main Scripts prompts yet." : "No prompts yet."}
+              {filter === "main"
+                ? "No Main Scripts prompts yet."
+                : filter === "summary"
+                  ? "No summary-tagged prompts yet."
+                  : filter === "unique"
+                    ? "No unique prompts yet."
+                    : "No prompts yet."}
               <br />
               {filter === "unique" || filter === "summary" ? "Switch the filter." : "Create one to begin."}
             </p>
