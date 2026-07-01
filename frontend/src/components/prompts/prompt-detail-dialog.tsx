@@ -166,6 +166,12 @@ function DetailPanel({
 
   const fromV = versions.find((v) => v.id === fromId);
   const toV = versions.find((v) => v.id === toId);
+  // value→label map so the diff triggers show "v1 · Main" instead of the raw version GUID — Base UI
+  // Select reads the selected label from `items`, not from the mounted SelectItem children.
+  const versionItems = versions.map((v, i) => ({
+    value: v.id,
+    label: `${vLabel(versions, v.id) || `v${i + 1}`}${v.note ? ` — ${v.note}` : ""}`,
+  }));
 
   const doPromote = (versionId: string) =>
     promote.mutate(
@@ -305,7 +311,7 @@ function DetailPanel({
               <span className="rounded-[5px] bg-[var(--diff-del-tx)] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
                 FROM
               </span>
-              <Select value={fromId ?? undefined} onValueChange={setFromId}>
+              <Select items={versionItems} value={fromId ?? undefined} onValueChange={setFromId}>
                 <SelectTrigger size="sm" className="w-[320px] max-w-full">
                   <SelectValue placeholder="From" />
                 </SelectTrigger>
@@ -324,7 +330,7 @@ function DetailPanel({
               <span className="rounded-[5px] bg-[var(--diff-add-tx)] px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
                 TO
               </span>
-              <Select value={toId ?? undefined} onValueChange={setToId}>
+              <Select items={versionItems} value={toId ?? undefined} onValueChange={setToId}>
                 <SelectTrigger size="sm" className="w-[320px] max-w-full">
                   <SelectValue placeholder="To" />
                 </SelectTrigger>
@@ -375,24 +381,33 @@ function BranchPanel({
 }) {
   const qc = useQueryClient();
   const branch = usePostApiPromptsIdVersions();
+  const promote = usePostApiPromptsIdVersionsVersionIdPromote();
+  const busy = branch.isPending || promote.isPending;
   const form = useForm<BranchValues>({
     resolver: zodResolver(branchSchema),
     defaultValues: { note: "", content: base?.content ?? "" },
   });
 
-  const onSubmit = (values: BranchValues) => {
+  // Save the edit as a new version. `makeMain` promotes it in the same step so the change becomes the
+  // team version immediately (what most edits want); without it the version stays a draft to review and
+  // promote later. Chaining the two mutations avoids the trap where a saved edit looks "not saved"
+  // because the team version still points at the old content.
+  const save = async (values: BranchValues, makeMain: boolean) => {
     if (!base) return;
-    branch.mutate(
-      { id: promptId, data: { parentVersionId: base.id, content: values.content, note: values.note?.trim() || null } },
-      {
-        onSuccess: async () => {
-          await invalidatePath(qc, "/api/prompts");
-          toast.success("Draft saved as a new version");
-          onBack();
-        },
-        onError: () => toast.error("Branch failed"),
-      },
-    );
+    try {
+      const created = await branch.mutateAsync({
+        id: promptId,
+        data: { parentVersionId: base.id, content: values.content, note: values.note?.trim() || null },
+      });
+      if (makeMain) await promote.mutateAsync({ id: promptId, versionId: created.id });
+      // Also refresh /api/scripts — the map reads a session's prompt name/version live, so a promote
+      // shouldn't leave an open map stale.
+      await invalidatePath(qc, "/api/prompts", "/api/scripts");
+      toast.success(makeMain ? "Saved and set as the team version" : "Draft saved as a new version");
+      onBack();
+    } catch {
+      toast.error(makeMain ? "Couldn’t save and promote" : "Branch failed");
+    }
   };
 
   return (
@@ -405,7 +420,7 @@ function BranchPanel({
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <form onSubmit={form.handleSubmit((v) => save(v, false))} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
             <FormField
               control={form.control}
@@ -437,11 +452,14 @@ function BranchPanel({
             />
           </div>
           <div className="flex shrink-0 justify-end gap-2.5 border-t border-border p-4">
-            <Button type="button" variant="ghost" onClick={onBack}>
+            <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={branch.isPending}>
-              {branch.isPending ? "Saving…" : "Save as new version"}
+            <Button type="submit" variant="outline" disabled={busy}>
+              {busy ? "Saving…" : "Save as draft"}
+            </Button>
+            <Button type="button" onClick={form.handleSubmit((v) => save(v, true))} disabled={busy}>
+              {busy ? "Saving…" : "Save & make team version"}
             </Button>
           </div>
         </form>
