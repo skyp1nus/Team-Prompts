@@ -8,12 +8,19 @@ using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Application.Services;
 
+/// <summary>The original uploaded file, opened for streaming: raw bytes + the content type/name to
+/// serve them under. Carries a live <see cref="Stream"/>, so it is not a serializable DTO.</summary>
+public sealed record ScriptFile(Stream Content, string ContentType, string FileName);
+
 public interface IScriptService
 {
     /// <summary><paramref name="kind"/> null → Original scripts only (generated variants stay hidden
     /// behind their project folder; the flat rail never lists them).</summary>
     Task<IReadOnlyList<ScriptListItemDto>> ListAsync(Guid? workspaceId, string? search, ScriptKind? kind, CancellationToken ct = default);
     Task<ScriptDto?> GetAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Opens the original uploaded file for inline viewing (native browser render), or null if
+    /// the script has no stored original (a generated Variant) or the blob is missing.</summary>
+    Task<ScriptFile?> OpenOriginalAsync(Guid id, CancellationToken ct = default);
     Task<ScriptDto> UploadAsync(Guid workspaceId, string fileName, string contentType, Stream content, string? name, CancellationToken ct = default);
     Task<ScriptDto> RenameAsync(Guid id, string name, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
@@ -63,6 +70,28 @@ public sealed class ScriptService(
         if (s is null) return null;
         var dir = await users.GetAsync([s.CreatedByUserId], ct);
         return ToDto(s, dir);
+    }
+
+    public async Task<ScriptFile?> OpenOriginalAsync(Guid id, CancellationToken ct = default)
+    {
+        var s = await db.Scripts.AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => new { x.StorageKey, x.FileType, x.OriginalFileName })
+            .FirstOrDefaultAsync(ct);
+        if (s?.StorageKey is null) return null;
+
+        var stream = await files.OpenReadAsync(s.StorageKey, ct);
+        if (stream is null) return null;
+
+        // Force the content type off the known FileType (not the stored upload type, which can be a
+        // generic octet-stream) so the browser reliably renders inline — a PDF with its annotations.
+        var contentType = s.FileType switch
+        {
+            FileType.Pdf => "application/pdf",
+            FileType.Txt => "text/plain; charset=utf-8",
+            _ => "application/octet-stream",
+        };
+        return new ScriptFile(stream, contentType, s.OriginalFileName);
     }
 
     /// <summary>Maps a tracked/untracked Script to its DTO (shared by GetAsync + ScriptProjectService).</summary>

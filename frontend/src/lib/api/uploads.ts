@@ -34,6 +34,16 @@ export async function createProjectFromUpload(
   return data;
 }
 
+/**
+ * Absolute URL to a script's original uploaded file, served inline so the browser's native viewer
+ * renders it (a PDF incl. its review annotations) in a new tab. Same base-URL rule as the axios
+ * client (dev: NEXT_PUBLIC_API_BASE_URL; prod: same origin); the same-site cookie authorises it.
+ */
+export function scriptFileUrl(scriptId: string): string {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  return `${base}/api/scripts/${scriptId}/file`;
+}
+
 /** Upload (or replace) a workspace's dock avatar. Returns the updated workspace. */
 export async function uploadWorkspaceAvatar(workspaceId: string, file: File): Promise<WorkspaceDto> {
   const form = new FormData();
