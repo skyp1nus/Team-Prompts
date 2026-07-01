@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   Columns3,
   Copy,
@@ -140,6 +141,8 @@ type FlatNode =
 /** Colour of the Summary node → its tagged prompts (the branch edges). */
 const SUMMARY_EDGE_COLOR = "#8b5cf6"; // violet-500
 const SUMMARY_W = 380;
+/** Summary node shows up to this many chars collapsed; longer text needs expanding to read fully. */
+const SUMMARY_CHAR_LIMIT = 800;
 
 /** Layer padding + lane gaps, mirroring the design's flex layout so auto-placed blocks land where
  *  the old flow put them (px-14 / py-3.5, gap-16 lanes, gap-[132px] columns, gap-[34px] stacks). */
@@ -1094,6 +1097,9 @@ function SummaryNode({
   const pending = status === SessionStatus.Queued || status === SessionStatus.Streaming;
   const failed = status === SessionStatus.Failed;
   const text = (summary.extractedText ?? "").trim();
+  const needsExpand = text.length > SUMMARY_CHAR_LIMIT;
+  const shownText =
+    expanded || !needsExpand ? text : `${text.slice(0, SUMMARY_CHAR_LIMIT).trimEnd()}…`;
 
   return (
     <div data-node data-summary={scriptId} className="relative z-[2] shrink-0" style={{ width: SUMMARY_W }}>
@@ -1119,25 +1125,31 @@ function SummaryNode({
               {summary.variantError || "Summary generation failed."}
             </div>
           ) : text ? (
-            <button
+            <div
               data-no-drag
-              onClick={() => setExpanded((e) => !e)}
-              className="mt-3 flex w-full items-start gap-2 rounded-[10px] border border-border bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted"
+              className="mt-3 rounded-[10px] border border-border bg-muted/40 px-3 py-2.5"
             >
-              {expanded ? (
-                <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-              )}
-              <span
-                className={cn(
-                  "min-w-0 flex-1 text-[12px] leading-relaxed whitespace-pre-wrap",
-                  !expanded && "line-clamp-3",
-                )}
-              >
-                {text}
+              <span className="block text-[12px] leading-relaxed whitespace-pre-wrap">
+                {shownText}
               </span>
-            </button>
+              {needsExpand && (
+                <button
+                  data-no-drag
+                  onClick={() => setExpanded((e) => !e)}
+                  className="mt-2 flex items-center gap-1 text-[11.5px] font-semibold text-violet-600 transition-colors hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+                >
+                  {expanded ? (
+                    <>
+                      <ChevronUp className="size-3.5 shrink-0" /> Show less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="size-3.5 shrink-0" /> Read full Summary
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           ) : (
             <p className="mt-3 text-[11.5px] text-faint">No Summary yet.</p>
           )}
