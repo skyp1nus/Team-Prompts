@@ -1473,13 +1473,13 @@ function OutputNode({
   const anyStreaming = ordered.some(isActive);
   const anyWaiting = ordered.some(isWaiting);
 
-  // Size the card to this block's OWN longest result (capped at PREVIEW_MAX chars), not always to a
-  // full 100 — so short-result blocks stay compact. Probe uses the real text for proportional-font
-  // accuracy; ties broken by raw length.
-  const longestContent = displayed
+  // Size the card to this block's WIDEST result (each capped at PREVIEW_MAX chars), not always to a
+  // full 100 — so short-result blocks stay compact. The probe renders EVERY result so the browser
+  // measures real per-glyph pixel width (proportional font), not just the longest by char count —
+  // otherwise a shorter-by-count but wider-in-pixels title would clip.
+  const probeTexts = displayed
     .flatMap((run) => run.results)
-    .reduce((longest, r) => (r.content.length > longest.length ? r.content : longest), "");
-  const probeText = longestContent.slice(0, PREVIEW_MAX);
+    .map((r) => r.content.slice(0, PREVIEW_MAX));
   // The newest run already shows its own "Try again" when it failed/emptied — so don't double up
   // with the header's generate button in that case.
   const newestFailed =
@@ -1548,7 +1548,7 @@ function OutputNode({
           )}
         >
           <div className="flex flex-col gap-1.5 p-2.5">
-            <WidthProbe text={probeText} />
+            <WidthProbe texts={probeTexts} />
             {displayed.map((run, i) => (
               <div key={run.session.id} className={cn(i > 0 && "mt-1 border-t border-border pt-2.5")}>
                 <RunMeta
@@ -1638,22 +1638,27 @@ function OutputNode({
   );
 }
 
-/** Invisible sizer: makes a card exactly wide enough for its longest result (≤ PREVIEW_MAX chars),
+/** Invisible sizer: makes a card exactly wide enough for its WIDEST result (each ≤ PREVIEW_MAX chars),
  *  mirroring the real collapsed row EXACTLY — chevron + text + count + BOTH action buttons (highlight
- *  + favourite) — so the card is sized to the real text and `truncate` never clips a ≤100-char title
- *  mid-card. Any element here that the real row has but the probe lacks shrinks the card and clips text
- *  early, so keep the two layouts in lockstep. */
-function WidthProbe({ text }: { text: string }) {
-  if (!text) return null;
+ *  + favourite). The card is `w-fit`, so its max-content width = the widest probe row. We render EVERY
+ *  result (not just the longest by char count) so the browser measures real per-glyph pixel width — two
+ *  equal-length titles with different glyph widths (e.g. "WhatsApp"+caps vs narrow letters) both fit,
+ *  and `truncate` never clips a ≤100-char title mid-card. Any element here that the real row has but a
+ *  probe row lacks shrinks the card and clips text early, so keep the two layouts in lockstep. */
+function WidthProbe({ texts }: { texts: string[] }) {
+  const rows = texts.filter(Boolean);
+  if (!rows.length) return null;
   return (
     <div aria-hidden className="pointer-events-none h-0 overflow-hidden" data-width-probe>
-      <div className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2">
-        <span className="size-3.5 shrink-0" />
-        <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">{text}</span>
-        <span className="shrink-0 text-[10px] tabular-nums">000</span>
-        <span className="size-[22px] shrink-0" />
-        <span className="size-[22px] shrink-0" />
-      </div>
+      {rows.map((text, i) => (
+        <div key={i} className="flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2">
+          <span className="size-3.5 shrink-0" />
+          <span className="text-[12.5px] leading-snug font-medium whitespace-nowrap">{text}</span>
+          <span className="shrink-0 text-[10px] tabular-nums">000</span>
+          <span className="size-[22px] shrink-0" />
+          <span className="size-[22px] shrink-0" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1703,10 +1708,10 @@ function RunCard({
   time: string;
   canDeleteRun: boolean;
 }) {
-  const probeText = useMemo(() => {
-    const longest = run.results.reduce((l, r) => (r.content.length > l.length ? r.content : l), "");
-    return longest.slice(0, PREVIEW_MAX);
-  }, [run.results]);
+  const probeTexts = useMemo(
+    () => run.results.map((r) => r.content.slice(0, PREVIEW_MAX)),
+    [run.results],
+  );
   return (
     <div
       data-run-card
@@ -1717,7 +1722,7 @@ function RunCard({
       )}
     >
       <RunMeta label={label} time={time} number={run.session.promptVersionNumber} isMain={run.session.isMainVersion} />
-      <WidthProbe text={probeText} />
+      <WidthProbe texts={probeTexts} />
       <RunBlock run={run} scriptId={scriptId} onLayoutChange={onLayoutChange} canDeleteRun={canDeleteRun} />
     </div>
   );
