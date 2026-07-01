@@ -168,7 +168,15 @@ const USER_ROLES = ["Owner", "Admin", "PromptEditor", "Member", "Viewer"] as con
 const createUserSchema = z.object({
   displayName: z.string().trim().min(1, "Display name is required").max(200),
   email: z.string().email("Enter a valid email"),
-  password: z.string().min(6, "At least 6 characters"),
+  // Mirror ASP.NET Identity's policy (Program.cs) so we fail fast with a clear message instead of a
+  // generic 400 from the server: ≥6 chars + lower + upper + digit + one non-alphanumeric symbol.
+  password: z
+    .string()
+    .min(6, "At least 6 characters")
+    .regex(/[a-z]/, "Add a lowercase letter")
+    .regex(/[A-Z]/, "Add an uppercase letter")
+    .regex(/[0-9]/, "Add a digit")
+    .regex(/[^a-zA-Z0-9]/, "Add a symbol (e.g. ! ? #)"),
   role: z.enum(USER_ROLES),
 });
 type CreateUserValues = z.infer<typeof createUserSchema>;
@@ -197,10 +205,17 @@ function CreateUserSheet({ ownerExists }: { ownerExists: boolean }) {
           form.reset(EMPTY);
         },
         onError: (err) => {
-          const data = (err as { response?: { data?: unknown } })?.response?.data;
-          toast.error(
-            typeof data === "string" && data ? data : "Could not create user (check email/password)",
-          );
+          const data = (err as {
+            response?: { data?: { errors?: Record<string, string[]>; detail?: string } | string };
+          })?.response?.data;
+          let msg = "Could not create user (check email/password)";
+          if (typeof data === "string" && data) msg = data;
+          else if (data && typeof data === "object") {
+            // Surface ASP.NET Identity's real reasons (e.g. password complexity) instead of a generic line.
+            const fromErrors = data.errors ? Object.values(data.errors).flat().join(" ") : "";
+            msg = fromErrors || data.detail || msg;
+          }
+          toast.error(msg);
         },
       },
     );
@@ -254,7 +269,7 @@ function CreateUserSheet({ ownerExists }: { ownerExists: boolean }) {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="At least 6 characters" {...field} />
+                      <Input type="password" placeholder="6+ chars · upper, lower, digit & symbol" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
