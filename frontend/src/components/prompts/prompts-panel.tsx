@@ -532,20 +532,20 @@ function PromptRow({
             >
               SUMMARY
             </span>
+          ) : prompt.useSummarySource ? (
+            // Summary-tagged: the tag already says it all — show a single SUMMARY badge, no "MAIN ↳".
+            <span
+              title="Runs against the project's Summary script (Summary branch)"
+              className="shrink-0 rounded-[5px] bg-violet-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
+            >
+              SUMMARY
+            </span>
           ) : (
             <span
               title="Generates the main content"
               className="shrink-0 rounded-[5px] bg-accent px-1.5 py-px text-[9px] font-bold tracking-wide text-muted-foreground"
             >
               MAIN
-            </span>
-          )}
-          {prompt.useSummarySource && (
-            <span
-              title="Runs against the project's Summary script (Summary branch)"
-              className="shrink-0 rounded-[5px] bg-violet-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
-            >
-              ↳ SUMMARY
             </span>
           )}
           {prompt.useKeywords && (

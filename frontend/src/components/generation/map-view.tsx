@@ -1292,7 +1292,7 @@ function PromptNode({
                     title="Runs against the Summary script — the Summary branch"
                     className="rounded-[4px] bg-violet-500/15 px-1 py-px text-[8px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
                   >
-                    ↳ SUMMARY
+                    SUMMARY
                   </span>
                 )}
                 {notConfigured && (
