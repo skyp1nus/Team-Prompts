@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Tags, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -126,8 +126,14 @@ export function ScriptsPanel() {
 
 function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDto; expanded: boolean }) {
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript, setProjectExpanded } =
-    useWorkspace();
+  const {
+    activeScriptId,
+    setActiveScriptId,
+    setTagsDescriptionProjectId,
+    batchScriptIds,
+    toggleBatchScript,
+    setProjectExpanded,
+  } = useWorkspace();
   const delProject = useDeleteApiScriptProjectsId();
   const renameProject = usePutApiScriptProjectsId();
   // null = not renaming. A string = the live draft, seeded from the current name when rename opens.
@@ -148,7 +154,10 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
 
   const onOpenChange = (o: boolean) => {
     setProjectExpanded(project.id, o);
-    if (o && project.originalScriptId) setActiveScriptId(project.originalScriptId);
+    if (o && project.originalScriptId) {
+      setActiveScriptId(project.originalScriptId);
+      setTagsDescriptionProjectId(null); // browsing a script leaves the Tags & Description mind map
+    }
   };
 
   const onDeleteProject = (e: React.MouseEvent) => {
@@ -320,6 +329,14 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
           {detail && (
             <KeywordsLeaf projectId={project.id} projectName={project.name} keywords={keywords} />
           )}
+          {/* The project's Tags & Description mind map (its own canvas with the two static prompts). */}
+          {detail && (
+            <TagsDescriptionLeaf
+              projectId={project.id}
+              projectName={project.name}
+              originalScriptId={project.originalScriptId ?? original?.id ?? null}
+            />
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -380,6 +397,48 @@ function KeywordsLeaf({
   );
 }
 
+/** Row under Keywords that opens the project's "Tags & Description" mind map in the center (its own
+ *  canvas with the two workspace-static prompts). Active-highlighted while that canvas is showing. */
+function TagsDescriptionLeaf({
+  projectId,
+  projectName,
+  originalScriptId,
+}: {
+  projectId: string;
+  projectName: string;
+  originalScriptId: string | null;
+}) {
+  const { setActiveScriptId, tagsDescriptionProjectId, setTagsDescriptionProjectId } = useWorkspace();
+  const active = tagsDescriptionProjectId === projectId;
+  const disabled = !originalScriptId;
+
+  const open = () => {
+    if (!originalScriptId) return;
+    setActiveScriptId(originalScriptId); // sessions load off the Original; the two prompts run against it
+    setTagsDescriptionProjectId(projectId);
+  };
+
+  return (
+    <div
+      onClick={open}
+      title={disabled ? "Upload a source first" : `Tags & Description mind map for "${projectName}"`}
+      className={cn(
+        "group/leaf relative my-[2px] flex items-center gap-2 rounded-md py-1.5 pr-1.5 pl-2 transition-colors",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-accent",
+        active && "bg-primary/[0.07]",
+      )}
+    >
+      {/* spacer aligns the icon with the source/variant rows (which lead with a checkbox) */}
+      <span className="size-[18px] shrink-0" />
+      <span className="flex size-[26px] shrink-0 items-center justify-center rounded-[6px] bg-primary/10 text-primary">
+        <Tags className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">Tags &amp; Description</span>
+      <ChevronRight className="size-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover/leaf:opacity-100" />
+    </div>
+  );
+}
+
 function ScriptLeaf({
   script,
   isSource,
@@ -396,7 +455,8 @@ function ScriptLeaf({
   projectId?: string;
 }) {
   const qc = useQueryClient();
-  const { activeScriptId, setActiveScriptId, batchScriptIds, toggleBatchScript } = useWorkspace();
+  const { activeScriptId, setActiveScriptId, setTagsDescriptionProjectId, batchScriptIds, toggleBatchScript } =
+    useWorkspace();
   const delVariant = useDeleteApiScriptProjectsIdVariantsVariantId();
   const [viewOpen, setViewOpen] = useState(false);
 
@@ -425,7 +485,10 @@ function ScriptLeaf({
 
   return (
     <div
-      onClick={() => setActiveScriptId(script.id)}
+      onClick={() => {
+        setActiveScriptId(script.id);
+        setTagsDescriptionProjectId(null); // leaving the Tags & Description mind map to browse a script
+      }}
       className={cn(
         "group/leaf relative my-[2px] flex cursor-pointer items-center gap-2 rounded-md py-1.5 pr-1.5 pl-2 transition-colors hover:bg-accent",
         active && "bg-primary/[0.07]",

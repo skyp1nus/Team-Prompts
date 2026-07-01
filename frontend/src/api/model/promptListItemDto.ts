@@ -19,4 +19,5 @@ export interface PromptListItemDto {
   kind: PromptKind;
   useKeywords: boolean;
   useSummarySource: boolean;
+  isConfigured?: boolean;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Columns3, Heart, LayoutGrid, Loader2, Network, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, Columns3, Heart, LayoutGrid, Loader2, Network, Sparkles, Tags, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { usePostApiGeneration } from "@/api/endpoints/generation/generation";
@@ -14,7 +14,7 @@ import {
   useGetApiScriptsId,
   useGetApiScriptsIdSessions,
 } from "@/api/endpoints/scripts/scripts";
-import { PromptKind, type ScriptDto, SessionStatus, type SessionWithResultsDto } from "@/api/model";
+import { PromptKind, type PromptListItemDto, type ScriptDto, SessionStatus, type SessionWithResultsDto } from "@/api/model";
 import { ColumnsView } from "@/components/generation/columns-view";
 import { GridView } from "@/components/generation/grid-view";
 import { MapView, type Group } from "@/components/generation/map-view";
@@ -38,6 +38,8 @@ export function CenterPanel() {
   const {
     activeWorkspaceId,
     activeScriptId,
+    tagsDescriptionProjectId,
+    setTagsDescriptionProjectId,
     selectedPromptIds,
     promptVersions,
     batchScriptIds,
@@ -104,6 +106,26 @@ export function CenterPanel() {
     [promptList],
   );
 
+  // The two workspace-static prompts (Tags & Description) live on their OWN mind map, never in the normal
+  // one. Resolve them from the library (Tags first), so both lanes render even before anything's generated.
+  const tdPromptList = useMemo(() => {
+    const rank = (k: PromptListItemDto["kind"]) =>
+      k === PromptKind.Tags ? 0 : k === PromptKind.Description ? 1 : 2;
+    return (promptList ?? [])
+      .filter((p) => p.kind === PromptKind.Tags || p.kind === PromptKind.Description)
+      .sort((a, b) => rank(a.kind) - rank(b.kind));
+  }, [promptList]);
+  const tdPromptIds = useMemo(() => new Set(tdPromptList.map((p) => p.id)), [tdPromptList]);
+  // Split the active script's sessions: the normal map/columns/grid never show the static prompts' runs.
+  const mainSessions = useMemo(
+    () => (sessions ?? []).filter((s) => !tdPromptIds.has(s.session.promptId)),
+    [sessions, tdPromptIds],
+  );
+  const tdSessions = useMemo(
+    () => (sessions ?? []).filter((s) => tdPromptIds.has(s.session.promptId)),
+    [sessions, tdPromptIds],
+  );
+
   useEffect(() => {
     if (activeScriptId) subscribeScript(activeScriptId);
   }, [activeScriptId, subscribeScript]);
@@ -119,9 +141,36 @@ export function CenterPanel() {
   const canGenerate = missing.length === 0 && !generating;
 
   const allGroups = useMemo(
-    () => groupByPrompt(sessions ?? [], promptOrder, summaryPromptIds),
-    [sessions, promptOrder, summaryPromptIds],
+    () => groupByPrompt(mainSessions, promptOrder, summaryPromptIds),
+    [mainSessions, promptOrder, summaryPromptIds],
   );
+  // The Tags & Description mind map: one lane per static prompt (both always shown), populated with
+  // whatever's been generated for it. Built off the prompt list so an un-run lane still offers Generate.
+  const tdGroups = useMemo<Group[]>(
+    () =>
+      tdPromptList.map((p) => {
+        const own = tdSessions.filter((s) => s.session.promptId === p.id);
+        const ordered = [...own].sort(
+          (a, b) => +new Date(a.session.createdAt) - +new Date(b.session.createdAt),
+        );
+        const buckets = new Map<string, SessionWithResultsDto[]>();
+        for (const s of ordered) {
+          if (!buckets.has(s.session.model)) buckets.set(s.session.model, []);
+          buckets.get(s.session.model)!.push(s);
+        }
+        return {
+          promptId: p.id,
+          promptName: p.name,
+          sessions: [...buckets.values()].flat(),
+          segment: "main" as const,
+          useKeywords: p.useKeywords,
+          isConfigured: p.isConfigured,
+        };
+      }),
+    [tdPromptList, tdSessions],
+  );
+  const inTd = !!tagsDescriptionProjectId && !!activeScriptId;
+  const projectName = (project as { name?: string } | undefined)?.name ?? "";
   // Left-side "Focus" narrows the center to just the Summary branch (summary-tagged lanes). Only takes
   // effect when the active script actually has a Summary — otherwise there'd be no way to un-focus.
   const groups = useMemo(
@@ -185,6 +234,31 @@ export function CenterPanel() {
     <section className="flex h-full min-w-0 flex-col bg-muted">
       {/* center-head */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3.5 gap-y-2.5 border-b border-border bg-background px-5 py-3">
+        {inTd ? (
+          <>
+            <div className="flex min-w-0 flex-1 basis-0 items-center gap-2">
+              <span className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 text-[12.5px] font-semibold text-primary">
+                <Tags className="size-3.5" />
+                Tags &amp; Description
+              </span>
+              {projectName && (
+                <span className="truncate text-[12.5px] text-muted-foreground">{projectName}</span>
+              )}
+            </div>
+            <div className="flex flex-1 basis-0 items-center justify-end gap-2.5">
+              <ModelPicker />
+              <Button
+                variant="outline"
+                onClick={() => setTagsDescriptionProjectId(null)}
+                title="Back to the script's canvas"
+                className="h-9 justify-center gap-1.5 rounded-md text-[13px]"
+              >
+                <ArrowLeft className="size-4" /> Back to script
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
         {/* left: highlights filter + clear the whole canvas. On the Map the highlights toggle lives in
             the canvas controls menu instead, so it isn't duplicated here. */}
         <div className="flex flex-1 basis-0 items-center gap-2">
@@ -281,11 +355,23 @@ export function CenterPanel() {
             )}
           </Button>
         </div>
+          </>
+        )}
       </div>
 
       {/* results */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {!activeScriptId ? (
+        {inTd ? (
+          // The project's Tags & Description mind map — its own canvas, two static-prompt lanes.
+          <MapView
+            key={`td:${activeScriptId}`}
+            variant="tags-description"
+            groups={tdGroups}
+            scriptId={activeScriptId!}
+            summary={null}
+            projectId={tagsDescriptionProjectId}
+          />
+        ) : !activeScriptId ? (
           <CenterEmpty
             title="Pick a script"
             body="Select a script on the left to see everything generated for it."

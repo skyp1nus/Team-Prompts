@@ -10,6 +10,7 @@ import {
   Copy,
   FileText,
   Heart,
+  KeyRound,
   Loader2,
   Maximize2,
   Minus,
@@ -21,6 +22,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import {
   useCallback,
@@ -33,8 +35,10 @@ import {
 import { toast } from "sonner";
 import {
   useDeleteApiGenerationSessionsSessionId,
+  usePostApiGeneration,
   usePostApiGenerationSessionsSessionIdRegenerate,
 } from "@/api/endpoints/generation/generation";
+import { usePutApiPromptsId } from "@/api/endpoints/prompts/prompts";
 import {
   useDeleteApiResultsResultIdFavorite,
   useDeleteApiResultsResultIdHighlight,
@@ -53,6 +57,7 @@ import {
 import { SessionStatus, type CanvasNodeDto, type GenerationResultDto, type ScriptDto, type SessionWithResultsDto, type UserRef } from "@/api/model";
 import { AddModelMenu } from "@/components/generation/add-model-menu";
 import { VersionBadge } from "@/components/generation/version-badge";
+import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,6 +85,12 @@ export type Group = {
   /** "summary" = a summary-tagged prompt's lane (ran against the Summary script — the Summary branch);
    *  "main" = a normal lane off the Original. Drives the always-first ordering + the lane's SUMMARY tag. */
   segment: "summary" | "main";
+  /** Only set on the Tags & Description canvas: the static prompt's current keyword-injection flag, so
+   *  its lane can render a keywords on/off toggle. */
+  useKeywords?: boolean;
+  /** Only set on the Tags & Description canvas: false while the static prompt has no instructions yet.
+   *  Its lane burns amber and Generate is blocked until it's set up. */
+  isConfigured?: boolean;
 };
 
 const MIN_Z = 0.3;
@@ -224,16 +235,69 @@ export function MapView({
   scriptId,
   summary,
   projectId,
+  variant = "default",
 }: {
   groups: Group[];
   scriptId: string;
   /** The project's Summary script (the mind-map anchor node), or null when none exists yet. */
   summary: ScriptDto | null;
   projectId: string | null;
+  /** "tags-description" turns each lane's Generate into a fresh run against the Original (so the two
+   *  static prompts can be run with no prior session), and surfaces a per-lane keywords toggle + editor.
+   *  "default" is the normal script map. */
+  variant?: "default" | "tags-description";
 }) {
   const qc = useQueryClient();
-  const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly } = useWorkspace();
+  const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly, runModels } =
+    useWorkspace();
+  const tdMode = variant === "tags-description";
   const summaryKey = summary ? summaryKeyFor(scriptId) : null;
+
+  /* ---- Tags & Description lane actions (only used when tdMode) ---- */
+  const gen = usePostApiGeneration();
+  const updatePrompt = usePutApiPromptsId();
+  const [detailPromptId, setDetailPromptId] = useState<string | null>(null);
+
+  // Run one of the two static prompts against the Original — a fresh run per selected model (default
+  // model when none is picked). Works with zero prior sessions, so it bootstraps an empty lane where
+  // the normal "regenerate from the newest run" path can't.
+  const laneGenerate = useCallback(
+    (promptId: string) => {
+      if (!scriptId) return;
+      const models = runModels.length > 0 ? runModels : [null];
+      void Promise.allSettled(
+        models.map((model) =>
+          gen.mutateAsync({
+            data: { scriptIds: [scriptId], prompts: [{ promptId, promptVersionId: null }], model, variantCount: null },
+          }),
+        ),
+      ).then((settled) => {
+        invalidatePath(qc, `/api/scripts/${scriptId}/sessions`);
+        if (settled.every((r) => r.status === "rejected")) toast.error("Could not start generation");
+      });
+      toast.success("Generating…");
+    },
+    [scriptId, runModels, gen, qc],
+  );
+
+  // Toggle a static prompt's keyword injection (UpdatePromptRequest carries the current name unchanged).
+  const toggleKeywords = useCallback(
+    (group: Group) => {
+      if (updatePrompt.isPending) return;
+      const next = !group.useKeywords;
+      updatePrompt.mutate(
+        { id: group.promptId, data: { name: group.promptName, useKeywords: next } },
+        {
+          onSuccess: () => {
+            invalidatePath(qc, "/api/prompts");
+            toast.success(next ? "Keywords on" : "Keywords off");
+          },
+          onError: () => toast.error("Couldn’t update keywords"),
+        },
+      );
+    },
+    [updatePrompt, qc],
+  );
   const [menuOpen, setMenuOpen] = useState(true);
   const viewportRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -761,6 +825,14 @@ export function MapView({
                   group={n.group}
                   scriptId={scriptId}
                   lit={lit}
+                  onGenerate={tdMode ? () => laneGenerate(n.group.promptId) : undefined}
+                  generating={tdMode ? gen.isPending : undefined}
+                  keywords={
+                    tdMode
+                      ? { on: !!n.group.useKeywords, onToggle: () => toggleKeywords(n.group), pending: updatePrompt.isPending }
+                      : undefined
+                  }
+                  onOpenDetail={tdMode ? () => setDetailPromptId(n.group.promptId) : undefined}
                   onHover={(h) => {
                     if (panningRef.current || dragRef.current) return;
                     setHover(h ? { type: "prompt", id: n.group.promptId } : null);
@@ -805,6 +877,15 @@ export function MapView({
         onResetLayout={onResetLayout}
         resetPending={resetCanvas.isPending}
       />
+
+      {/* Tags & Description: edit the static prompt's content / versions inline from its lane. */}
+      {tdMode && (
+        <PromptDetailDialog
+          promptId={detailPromptId}
+          open={detailPromptId !== null}
+          onOpenChange={(o) => !o && setDetailPromptId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1104,11 +1185,23 @@ function PromptNode({
   scriptId,
   lit,
   onHover,
+  onGenerate,
+  generating,
+  keywords,
+  onOpenDetail,
 }: {
   group: Group;
   scriptId: string;
   lit: boolean;
   onHover: (hovering: boolean) => void;
+  /** Tags & Description mode: replaces the "regenerate from the newest run" action with a fresh run so
+   *  a lane with no prior sessions can still be generated. */
+  onGenerate?: () => void;
+  generating?: boolean;
+  /** Tags & Description mode: the lane's keyword-injection state + toggle. */
+  keywords?: { on: boolean; onToggle: () => void; pending?: boolean };
+  /** Tags & Description mode: open the prompt's history/editor. */
+  onOpenDetail?: () => void;
 }) {
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
@@ -1125,6 +1218,9 @@ function PromptNode({
   const mainSession = group.sessions.find((s) => s.session.isMainVersion);
   const nextNumber = pin?.number ?? mainSession?.session.promptVersionNumber ?? 0;
   const nextIsMain = !pin;
+  // Tags & Description lane (keywords toggle present) that has no instructions yet: it burns amber and
+  // Generate is blocked until the team writes the prompt.
+  const notConfigured = keywords !== undefined && group.isConfigured === false;
 
   const regenMore = () => {
     // one fresh run per model — from each model's newest run as the template
@@ -1169,12 +1265,18 @@ function PromptNode({
         className={cn(
           "relative rounded-[13px] border border-border bg-card shadow-md transition-[box-shadow,border-color]",
           lit && "border-border-strong shadow-lg",
+          notConfigured && "border-warn/60 bg-warn/[0.03]",
         )}
       >
         <div className="relative min-h-[104px] px-4 pt-3.5 pb-[52px]">
           <div className="flex items-center gap-2.5">
-            <div className="flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-primary/[0.08] text-primary">
-              <FileText className="size-[15px]" />
+            <div
+              className={cn(
+                "flex size-[30px] shrink-0 items-center justify-center rounded-[9px]",
+                notConfigured ? "bg-warn/15 text-warn" : "bg-primary/[0.08] text-primary",
+              )}
+            >
+              {notConfigured ? <TriangleAlert className="size-[15px]" /> : <FileText className="size-[15px]" />}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
@@ -1185,6 +1287,14 @@ function PromptNode({
                     className="rounded-[4px] bg-violet-500/15 px-1 py-px text-[8px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
                   >
                     ↳ SUMMARY
+                  </span>
+                )}
+                {notConfigured && (
+                  <span
+                    title="Not set up — write this prompt before generating"
+                    className="flex items-center gap-0.5 rounded-[4px] bg-warn/15 px-1 py-px text-[8px] font-bold tracking-wide text-warn"
+                  >
+                    <TriangleAlert className="size-2.5" /> NOT SET UP
                   </span>
                 )}
               </div>
@@ -1202,30 +1312,70 @@ function PromptNode({
 
           {/* run button pinned bottom-right (design .fn-run) */}
           <button
-            onClick={regenMore}
-            disabled={regen.isPending}
+            onClick={onGenerate ?? regenMore}
+            disabled={regen.isPending || generating || notConfigured}
+            title={notConfigured ? "Set up the prompt first — write its instructions" : undefined}
             className="absolute right-3 bottom-3 flex h-[29px] items-center gap-1.5 rounded-lg bg-primary pr-2.5 pl-3 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
-            {regen.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            {regen.isPending || generating ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
             Generate
           </button>
         </div>
       </div>
 
-      {/* fn-bar — detached footer toolbar */}
+      {/* fn-bar — detached footer toolbar. On the Tags & Description canvas it carries the keyword
+          on/off toggle + editor instead of the add-model menu. */}
       <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
-        <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
-          <FileText className="size-3.5 shrink-0 text-faint" />
-          <span className="truncate">{modelCount} model{modelCount === 1 ? "" : "s"}</span>
-        </span>
+        {keywords ? (
+          <button
+            data-no-drag
+            onClick={keywords.onToggle}
+            disabled={keywords.pending}
+            title={
+              keywords.on
+                ? "Keywords on — the project's keywords are injected into every run. Click to turn off"
+                : "Keywords off — click to inject the project's keywords into every run"
+            }
+            className={cn(
+              "flex h-7 items-center gap-1.5 rounded-[7px] border px-2 text-[11px] font-semibold transition-colors disabled:opacity-50",
+              keywords.on
+                ? "border-amber-400/60 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "border-border text-muted-foreground hover:border-amber-400/50 hover:text-amber-600",
+            )}
+          >
+            {keywords.pending ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+            {keywords.on ? "Keywords on" : "Keywords off"}
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
+            <FileText className="size-3.5 shrink-0 text-faint" />
+            <span className="truncate">{modelCount} model{modelCount === 1 ? "" : "s"}</span>
+          </span>
+        )}
         <span className="flex-1" />
-        <div className="flex w-[112px]">
-          <AddModelMenu
-            onPick={addModel}
-            existing={group.sessions.map((s) => s.session.model)}
-            disabled={regen.isPending}
-          />
-        </div>
+        {onOpenDetail ? (
+          <button
+            data-no-drag
+            onClick={onOpenDetail}
+            title="History & versions"
+            aria-label="History & versions"
+            className="flex size-7 shrink-0 items-center justify-center rounded-[7px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <SlidersHorizontal className="size-3.5" />
+          </button>
+        ) : (
+          <div className="flex w-[112px]">
+            <AddModelMenu
+              onPick={addModel}
+              existing={group.sessions.map((s) => s.session.model)}
+              disabled={regen.isPending}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

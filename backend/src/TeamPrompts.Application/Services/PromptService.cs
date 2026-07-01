@@ -43,13 +43,17 @@ public sealed class PromptService(
             {
                 p.Id, p.Name, p.MainVersionId, p.CreatedByUserId, p.CreatedAt, p.UpdatedAt,
                 VersionCount = p.Versions.Count, p.Kind, p.UseKeywords, p.UseSummarySource,
+                // Length of the Main version's content — 0 for the seeded, empty Tags/Description prompts.
+                MainContentLength = p.Versions.Where(v => v.Id == p.MainVersionId)
+                    .Select(v => (int?)v.Content.Length).FirstOrDefault(),
             })
             .ToListAsync(ct);
 
         var dir = await users.GetAsync(rows.Select(r => r.CreatedByUserId), ct);
         return rows.Select(r => new PromptListItemDto(
             r.Id, r.Name, r.MainVersionId, Attribution.Of(dir, r.CreatedByUserId),
-            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind, r.UseKeywords, r.UseSummarySource)).ToList();
+            r.CreatedAt, r.UpdatedAt, r.VersionCount, r.Kind, r.UseKeywords, r.UseSummarySource,
+            IsConfigured: (r.MainContentLength ?? 0) > 0)).ToList();
     }
 
     public async Task<PromptDetailDto?> GetAsync(Guid id, CancellationToken ct = default)
@@ -70,9 +74,11 @@ public sealed class PromptService(
                 Attribution.Of(dir, v.AuthorUserId), v.Note, v.IsMain, v.CreatedAt))
             .ToList();
 
+        var mainContent = prompt.Versions.FirstOrDefault(v => v.Id == prompt.MainVersionId)?.Content;
         return new PromptDetailDto(prompt.Id, prompt.Name, prompt.MainVersionId,
             Attribution.Of(dir, prompt.CreatedByUserId), prompt.CreatedAt, prompt.UpdatedAt, versions,
-            prompt.Kind, prompt.UseKeywords, prompt.UseSummarySource);
+            prompt.Kind, prompt.UseKeywords, prompt.UseSummarySource,
+            IsConfigured: !string.IsNullOrWhiteSpace(mainContent));
     }
 
     public async Task<PromptDetailDto> CreateAsync(CreatePromptRequest req, CancellationToken ct = default)
@@ -174,6 +180,9 @@ public sealed class PromptService(
     {
         var prompt = await db.Prompts.FirstOrDefaultAsync(p => p.Id == id, ct)
                      ?? throw new NotFoundException("Prompt not found.");
+        // The static "Unique" prompts (Summary master, Tags, Description) are seeded per workspace and can't be removed.
+        if (prompt.Kind is PromptKind.Summary or PromptKind.Tags or PromptKind.Description)
+            throw new AppValidationException("The Summary, Tags and Description prompts are system-managed and can't be deleted.");
         // Break the Main pointer first so cascade-delete of versions has no dangling FK.
         var name = prompt.Name;
         prompt.MainVersionId = null;

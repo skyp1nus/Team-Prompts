@@ -11,4 +11,6 @@ export type PromptKind = typeof PromptKind[keyof typeof PromptKind];
 export const PromptKind = {
   MainScripts: 'MainScripts',
   Summary: 'Summary',
+  Tags: 'Tags',
+  Description: 'Description',
 } as const;

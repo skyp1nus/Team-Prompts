@@ -62,7 +62,10 @@ public sealed record CreateScriptVariantRequest(
 public sealed record PromptListItemDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int VersionCount, PromptKind Kind, bool UseKeywords,
-    bool UseSummarySource);
+    bool UseSummarySource,
+    // False while the prompt's Main version has no instructions yet (the seeded, empty Tags/Description
+    // prompts). The mind map burns such a prompt as "not set up" until the team writes its content.
+    bool IsConfigured = true);
 
 public sealed record PromptVersionDto(
     Guid Id, Guid PromptId, Guid? ParentVersionId, string Content,
@@ -71,7 +74,7 @@ public sealed record PromptVersionDto(
 public sealed record PromptDetailDto(
     Guid Id, string Name, Guid? MainVersionId, UserRef CreatedBy,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyList<PromptVersionDto> Versions,
-    PromptKind Kind, bool UseKeywords, bool UseSummarySource);
+    PromptKind Kind, bool UseKeywords, bool UseSummarySource, bool IsConfigured = true);
 
 public sealed record CreatePromptRequest(
     Guid WorkspaceId, string Name, string Content, PromptKind Kind = PromptKind.MainScripts,

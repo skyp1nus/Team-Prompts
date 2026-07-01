@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Sheet,
   SheetClose,
@@ -37,7 +36,6 @@ import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
-  kind: z.enum([PromptKind.MainScripts, PromptKind.Summary]),
   content: z.string().trim().min(1, "Prompt instructions are required"),
   useKeywords: z.boolean(),
   // The "Summary tag": run this prompt against the project's Summary script instead of the Original.
@@ -55,7 +53,6 @@ export function CreatePromptDialog() {
     resolver: zodResolver(schema),
     defaultValues: {
       name: "",
-      kind: PromptKind.MainScripts,
       content: "",
       useKeywords: false,
       useSummarySource: false,
@@ -69,7 +66,7 @@ export function CreatePromptDialog() {
           workspaceId: activeWorkspaceId,
           name: values.name,
           content: values.content,
-          kind: values.kind,
+          kind: PromptKind.MainScripts,
           useKeywords: values.useKeywords,
           useSummarySource: values.useSummarySource,
         },
@@ -123,40 +120,6 @@ export function CreatePromptDialog() {
                     <FormControl>
                       <Input placeholder="e.g. Shorts Hook Titles" {...field} />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="kind"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type</FormLabel>
-                    <FormControl>
-                      <ToggleGroup
-                        value={[field.value]}
-                        onValueChange={(v) => {
-                          const next = (v as string[])[v.length - 1];
-                          if (next) field.onChange(next);
-                        }}
-                        variant="outline"
-                        spacing={0}
-                        className="w-full"
-                      >
-                        <ToggleGroupItem value={PromptKind.MainScripts} className="flex-1">
-                          Main Scripts
-                        </ToggleGroupItem>
-                        <ToggleGroupItem value={PromptKind.Summary} className="flex-1">
-                          Summary
-                        </ToggleGroupItem>
-                      </ToggleGroup>
-                    </FormControl>
-                    <p className="text-[11px] text-faint">
-                      {field.value === PromptKind.Summary
-                        ? "Transforms a script into a new Summary script (вижимка, rewrite, tone shift). The workspace's top Summary prompt auto-runs as the mind map — no setup."
-                        : "Generates the main content — titles, descriptions, hooks, tags."}
-                    </p>
                     <FormMessage />
                   </FormItem>
                 )}

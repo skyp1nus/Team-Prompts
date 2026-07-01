@@ -32,6 +32,12 @@ type WorkspaceValue = {
   activeScriptId: string | null;
   setActiveScriptId: (id: string | null) => void;
 
+  /** When set, the center shows the project's "Tags & Description" mind map (a separate canvas with the
+   *  two workspace-static prompts) instead of the normal Map. Cleared by browsing any script. Not
+   *  persisted — it's a transient focus, and the id is only meaningful in the active workspace. */
+  tagsDescriptionProjectId: string | null;
+  setTagsDescriptionProjectId: (id: string | null) => void;
+
   /** Prompts chosen for the next run (right panel multi-select). */
   selectedPromptIds: string[];
   togglePrompt: (id: string) => void;
@@ -134,6 +140,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
   const [dockCollapsed, setDockCollapsed] = usePersistedState<boolean>("tp.ws.dockCollapsed", false);
   const [activeScriptId, setActiveScriptId] = usePersistedState<string | null>("tp.ws.activeScript", null);
+  // Transient (not persisted): which project's Tags & Description mind map the center is showing, if any.
+  const [tagsDescriptionProjectId, setTagsDescriptionProjectId] = useState<string | null>(null);
   const [selectedPromptIds, setSelectedPromptIds] = usePersistedState<string[]>("tp.ws.prompts", []);
   const [promptVersions, setPromptVersions] = usePersistedState<Record<string, PromptVersionPin>>(
     "tp.ws.promptVersions",
@@ -166,6 +174,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const selectWorkspace = useCallback(
     (id: string) => {
       setActiveScriptId(null);
+      setTagsDescriptionProjectId(null);
       setBatchScriptIds([]);
       setSelectedPromptIds([]);
       setPromptVersions({});
@@ -174,6 +183,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     },
     [
       setActiveScriptId,
+      setTagsDescriptionProjectId,
       setBatchScriptIds,
       setSelectedPromptIds,
       setPromptVersions,
@@ -283,6 +293,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         toggleDockCollapsed,
         activeScriptId,
         setActiveScriptId,
+        tagsDescriptionProjectId,
+        setTagsDescriptionProjectId,
         selectedPromptIds,
         togglePrompt,
         clearPrompts,
