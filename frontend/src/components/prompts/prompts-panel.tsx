@@ -108,15 +108,16 @@ export function PromptsPanel() {
     p.kind === PromptKind.Tags || p.kind === PromptKind.Description;
   const showSummary = filter === "all" || filter === "summary";
   const showUnique = filter === "all" || filter === "unique";
-  // The sortable library list, scoped to the active filter:
-  //  · summary → prompts tagged "run against the Summary" (useSummarySource)
-  //  · main    → regular MainScripts (untagged — summary-tagged ones live under the Summary filter)
+  // The sortable library list, scoped to the active filter. "Summary" is a single type — the
+  // Summary-KIND prompts (the master pins to the top; the rest list here). Everything else is MAIN.
+  //  · summary → kind === Summary (non-master)
+  //  · main    → kind === MainScripts
   //  · unique  → none (Tags/Description render as pinned cards, not here)
   //  · all     → every non-pinned prompt
   const sortable = (prompts ?? []).filter((p) => {
     if (p.id === masterSummaryId || isStatic(p)) return false;
-    if (filter === "summary") return p.useSummarySource;
-    if (filter === "main") return p.kind === PromptKind.MainScripts && !p.useSummarySource;
+    if (filter === "summary") return p.kind === PromptKind.Summary;
+    if (filter === "main") return p.kind === PromptKind.MainScripts;
     if (filter === "unique") return false;
     return true; // "all"
   });
@@ -256,7 +257,7 @@ export function PromptsPanel() {
               {filter === "main"
                 ? "No Main Scripts prompts yet."
                 : filter === "summary"
-                  ? "No summary-tagged prompts yet."
+                  ? "No summary prompts yet."
                   : filter === "unique"
                     ? "No unique prompts yet."
                     : "No prompts yet."}
@@ -525,17 +526,10 @@ function PromptRow({
           )}
         </div>
         <div className="mt-[3px] flex items-center gap-1.5 text-[11px] text-faint">
+          {/* SUMMARY is a single type — only Summary-KIND prompts carry it. Everything else is MAIN. */}
           {prompt.kind === PromptKind.Summary ? (
             <span
-              title="Transforms a script into a new Summary script"
-              className="shrink-0 rounded-[5px] bg-ok/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-ok"
-            >
-              SUMMARY
-            </span>
-          ) : prompt.useSummarySource ? (
-            // Summary-tagged: the tag already says it all — show a single SUMMARY badge, no "MAIN ↳".
-            <span
-              title="Runs against the project's Summary script (Summary branch)"
+              title="Summary — transforms a script into the mind-map Summary"
               className="shrink-0 rounded-[5px] bg-violet-500/15 px-1.5 py-px text-[9px] font-bold tracking-wide text-violet-600 dark:text-violet-400"
             >
               SUMMARY
