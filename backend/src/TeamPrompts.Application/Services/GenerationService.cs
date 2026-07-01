@@ -98,27 +98,39 @@ public sealed class GenerationService(
         // script id + whether it's ready now or the dependent must park as Waiting until it finishes.
         var summaryPlans = await summaries.EnsureForScriptsAsync(scriptIds, model, ct);
 
-        // Build the canvas sessions. A Summary-KIND prompt is the mind-map BUILDER: its output IS the
-        // Summary node (ensured above via the variant pipeline), so it must NOT spawn a canvas session —
-        // doing so would re-run it against its own Summary script and duplicate the mind map. Only a
-        // summary-TAGGED prompt (UseSummarySource) is a CONSUMER that runs against the Summary script:
-        // its session is created up-front (so its node shows immediately) but parked Waiting (not enqueued)
-        // until the Summary finishes, then its executor releases it. Everything else runs against the
-        // Original right away.
+        // The MASTER Summary (the workspace's OLDEST Summary-kind prompt) is the mind-map BUILDER: its output
+        // IS the Summary node (ensured above), so it must never spawn a canvas session — that would re-run it
+        // against its own Summary and duplicate the mind map. Resolve it per workspace so we skip ONLY the
+        // master; every OTHER Summary-kind prompt is a CONSUMER that runs against the Summary script.
+        var promptWorkspaceIds = await db.Prompts.AsNoTracking()
+            .Where(p => promptIds.Contains(p.Id)).Select(p => p.WorkspaceId).Distinct().ToListAsync(ct);
+        var masterPromptIds = (await db.Prompts.AsNoTracking()
+                .Where(p => p.Kind == PromptKind.Summary && promptWorkspaceIds.Contains(p.WorkspaceId))
+                .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
+                .Select(p => new { p.WorkspaceId, p.Id })
+                .ToListAsync(ct))
+            .GroupBy(m => m.WorkspaceId)
+            .Select(g => g.First().Id)
+            .ToHashSet();
+
+        // Build the canvas sessions. A summary-RELATED prompt (a non-master Summary-KIND prompt, or a
+        // summary-TAGGED one) is a CONSUMER that runs AGAINST the project's Summary script: its session is
+        // created up-front (so its node shows immediately) but parked Waiting until the Summary finishes,
+        // then its executor releases it. Everything else runs against the Original right away.
         var sessions = new List<GenerationSession>();
         var waitingSummaryIds = new HashSet<Guid>();
         foreach (var sid in scriptIds)
         foreach (var pid in promptIds)
         {
             var p = promptById[pid];
-            if (p.Kind == PromptKind.Summary) continue; // builder → represented solely by the Summary node
+            if (masterPromptIds.Contains(pid)) continue; // master builder → represented solely by the Summary node
 
             var scriptForSession = sid;
             var status = SessionStatus.Queued;
-            // A summary-tagged prompt runs against the project's Summary (parked Waiting until it's ready).
+            // A summary-related prompt runs against the project's Summary (parked Waiting until it's ready).
             // If there's no resolvable Summary (e.g. the workspace has no Summary prompt at all), fall back
             // to running it against the script itself — never fail the whole generation.
-            if (p.UseSummarySource && summaryPlans.TryGetValue(sid, out var plan))
+            if ((p.UseSummarySource || p.Kind == PromptKind.Summary) && summaryPlans.TryGetValue(sid, out var plan))
             {
                 scriptForSession = plan.SummaryScriptId;
                 if (!plan.IsCompleted)

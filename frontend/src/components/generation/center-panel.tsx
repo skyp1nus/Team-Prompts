@@ -95,20 +95,25 @@ export function CenterPanel() {
     return m;
   }, [promptList]);
 
-  // Only summary-TAGGED prompts (UseSummarySource) form a Summary branch lane — they run AGAINST the
-  // Summary script. A Summary-KIND prompt is the mind-map BUILDER: its output IS the Summary node, so it
-  // never gets a lane of its own (the backend creates no session for it). The session marker
-  // (isSummarySource) still covers any tagged lane that already ran against the Summary script.
+  // Summary branch lanes: a prompt runs AGAINST the Summary script when it's summary-tagged
+  // (UseSummarySource) OR a Summary-KIND consumer. Both form a lane chained off the Summary node.
   const summaryPromptIds = useMemo(
-    () => new Set((promptList ?? []).filter((p) => p.useSummarySource).map((p) => p.id)),
+    () =>
+      new Set(
+        (promptList ?? []).filter((p) => p.useSummarySource || p.kind === PromptKind.Summary).map((p) => p.id),
+      ),
     [promptList],
   );
-  // Summary-KIND prompts are mind-map builders — never a manual run (the backend creates no session for
-  // them). Tracked so onGenerate can drop them from a request defensively, even from a stale selection.
-  const summaryKindIds = useMemo(
-    () => new Set((promptList ?? []).filter((p) => p.kind === PromptKind.Summary).map((p) => p.id)),
-    [promptList],
-  );
+  // The master Summary (the workspace's OLDEST Summary-kind prompt) is the mind-map BUILDER: its output IS
+  // the Summary node, so it never runs as a lane. It's pinned + non-selectable, but resolve it here too so
+  // onGenerate can drop it defensively from a stale selection (every OTHER Summary-kind prompt is runnable).
+  const masterSummaryId = useMemo(() => {
+    const summaries = (promptList ?? []).filter((p) => p.kind === PromptKind.Summary);
+    if (summaries.length === 0) return null;
+    return [...summaries].sort(
+      (a, b) => +new Date(a.createdAt) - +new Date(b.createdAt) || a.id.localeCompare(b.id),
+    )[0].id;
+  }, [promptList]);
 
   // The two workspace-static prompts (Tags & Description) live on their OWN mind map, never in the normal
   // one. Resolve them from the library (Tags first), so both lanes render even before anything's generated.
@@ -187,12 +192,11 @@ export function CenterPanel() {
 
   const onGenerate = async () => {
     if (!canGenerate || !readyToGenerate) return;
-    // Summary-KIND prompts are mind-map builders, not runnable lanes — the backend skips them. Drop them
-    // from the request so a selection that's ONLY builders can't masquerade as a started run (it would
-    // yield zero sessions and a misleading success toast).
-    const runnablePromptIds = selectedPromptIds.filter((id) => !summaryKindIds.has(id));
+    // The master Summary is the mind-map builder — the backend skips it. Drop it defensively so a stale
+    // selection of only the master can't masquerade as a started run (it would yield zero sessions).
+    const runnablePromptIds = selectedPromptIds.filter((id) => id !== masterSummaryId);
     if (runnablePromptIds.length === 0) {
-      toast.warning("Summary prompts build the mind map automatically — pick a regular or summary-tagged prompt to generate.");
+      toast.warning("The master Summary builds the mind map automatically — pick a prompt to generate.");
       return;
     }
     // Remember this prompt+model selection so a newly added script can inherit it (#12).

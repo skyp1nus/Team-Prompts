@@ -75,14 +75,24 @@ public sealed class SummaryService(
         // Summary-kind prompt (by CreatedAt, then Id). The prompt is seeded empty; until the team fills in
         // its instructions it isn't a usable master, so a Summary never auto-generates against blank text.
         var workspaceIds = originals.Select(o => o.WorkspaceId).Distinct().ToList();
+        // The master = the workspace's OLDEST Summary-kind prompt (the SAME one pinned + skipped on the
+        // client and in generation). It only builds once it has instructions — a blank master never
+        // auto-generates against empty text, and a NEWER Summary prompt never quietly takes over the build.
         var masterVersionByWorkspace = (await db.Prompts.AsNoTracking()
                 .Where(p => p.Kind == PromptKind.Summary && workspaceIds.Contains(p.WorkspaceId)
-                    && p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""))
+                    && p.MainVersionId != null)
                 .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
-                .Select(p => new { p.WorkspaceId, MainVersionId = p.MainVersionId!.Value })
+                .Select(p => new
+                {
+                    p.WorkspaceId,
+                    MainVersionId = p.MainVersionId!.Value,
+                    Configured = p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""),
+                })
                 .ToListAsync(ct))
             .GroupBy(m => m.WorkspaceId)
-            .ToDictionary(g => g.Key, g => g.First().MainVersionId);
+            .Select(g => g.First())
+            .Where(m => m.Configured)
+            .ToDictionary(m => m.WorkspaceId, m => m.MainVersionId);
 
         // Existing summaries → a plan keyed by their (completed?) state. Missing ones → queue + record.
         var newSummaries = new List<Guid>();
@@ -147,17 +157,21 @@ public sealed class SummaryService(
         if (project.OriginalScriptId is not { } originalId)
             throw new AppValidationException("This project has no source script to summarise.");
 
-        // Auto-resolve the master = the workspace's OLDEST *configured* Summary-kind prompt (the seeded one
-        // is empty until the team fills it in — skip it while blank).
-        var versionId = await db.Prompts.AsNoTracking()
-            .Where(p => p.WorkspaceId == project.WorkspaceId && p.Kind == PromptKind.Summary
-                && p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""))
+        // The master = the workspace's OLDEST Summary-kind prompt (same one pinned + skipped elsewhere). It
+        // must be set up before it can build — a newer Summary prompt never takes over while the master is blank.
+        var master = await db.Prompts.AsNoTracking()
+            .Where(p => p.WorkspaceId == project.WorkspaceId && p.Kind == PromptKind.Summary && p.MainVersionId != null)
             .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
-            .Select(p => p.MainVersionId)
+            .Select(p => new
+            {
+                MainVersionId = p.MainVersionId!.Value,
+                Configured = p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""),
+            })
             .FirstOrDefaultAsync(ct);
-        if (versionId is not { } mid)
+        if (master is not { Configured: true })
             throw new AppValidationException(
                 "The workspace's Summary prompt isn't set up yet. Fill it in the Prompt Library first.");
+        var mid = master.MainVersionId;
 
         var settings = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var resolvedModel = !string.IsNullOrWhiteSpace(model)

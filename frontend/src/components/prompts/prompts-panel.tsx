@@ -87,12 +87,22 @@ export function PromptsPanel() {
   }, [prompts]);
   const masterSummaryId = masterSummary?.id ?? null;
 
-  // Self-heal a persisted selection: keep only ids that still exist AND are runnable. Summary-KIND
-  // prompts are mind-map builders (their output IS the Summary node) — never a manual run — so they're
-  // excluded here too, dropping any stale selection of one that would otherwise be a silent no-op.
+  // Self-heal a persisted selection: keep only ids that still exist AND are runnable. Runnable = every
+  // prompt except the pinned master Summary (the mind-map builder) and the static Tags/Description cards.
+  // Non-master Summary-KIND prompts ARE runnable (consumers against the Summary), so they stay selectable.
   useEffect(() => {
-    if (prompts) prunePrompts(prompts.filter((p) => p.kind !== PromptKind.Summary).map((p) => p.id));
-  }, [prompts, prunePrompts]);
+    if (prompts)
+      prunePrompts(
+        prompts
+          .filter(
+            (p) =>
+              p.id !== masterSummaryId &&
+              p.kind !== PromptKind.Tags &&
+              p.kind !== PromptKind.Description,
+          )
+          .map((p) => p.id),
+      );
+  }, [prompts, prunePrompts, masterSummaryId]);
 
   // The two workspace-static prompts — configured here (their content is seeded empty), run from the
   // Tags & Description mind map. Pinned like the master Summary, kept out of the sortable/selectable list.
@@ -460,10 +470,9 @@ function PromptRow({
   onDelete: () => void;
 }) {
   const hasMain = !!prompt.mainVersionId;
-  // Summary-KIND prompts are mind-map builders, not runnable lanes — not selectable for a run (the master
-  // auto-runs as the mind map; any other Summary-kind prompt is represented by the Summary node too).
-  // Clicking one opens its detail instead of arming a run that the backend would silently skip.
-  const selectable = prompt.kind !== PromptKind.Summary;
+  // Every prompt in this list is selectable for a run. The master Summary (mind-map builder) is pinned
+  // separately and never reaches here; a NON-master Summary-KIND prompt is a CONSUMER that runs against
+  // the project's Summary script, so it's picked with a checkbox like any other prompt.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: prompt.id,
   });
@@ -472,11 +481,10 @@ function PromptRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      onClick={selectable ? onToggle : onOpen}
-      title={selectable ? undefined : "Mind-map builder — represented by the Summary node, not a manual run"}
+      onClick={onToggle}
       className={cn(
         "group relative mb-[3px] flex cursor-pointer items-start gap-1.5 rounded-lg p-2.5 transition-colors hover:bg-accent",
-        selectable && selected && "bg-primary/[0.07]",
+        selected && "bg-primary/[0.07]",
         isDragging && "z-10 opacity-60",
       )}
     >
@@ -493,20 +501,14 @@ function PromptRow({
           <GripVertical className="size-3.5" />
         </button>
       )}
-      {selectable ? (
-        <span
-          className={cn(
-            "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
-            selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
-          )}
-        >
-          {selected && "✓"}
-        </span>
-      ) : (
-        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/12 text-violet-600 dark:text-violet-400">
-          <Network className="size-3.5" />
-        </span>
-      )}
+      <span
+        className={cn(
+          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
+          selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
+        )}
+      >
+        {selected && "✓"}
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium">{prompt.name}</span>
