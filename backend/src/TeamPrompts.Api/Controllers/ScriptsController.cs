@@ -21,6 +21,23 @@ public sealed class ScriptsController(IScriptService scripts) : ControllerBase
     public async Task<ActionResult<ScriptDto>> Get(Guid id, CancellationToken ct)
         => await scripts.GetAsync(id, ct) is { } dto ? Ok(dto) : NotFound();
 
+    /// <summary>Streams the original uploaded file inline so the browser's native viewer renders it
+    /// (a PDF incl. its review annotations) in a new tab. Auth rides the same-site cookie on the link.</summary>
+    [HttpGet("{id:guid}/file")]
+    public async Task<IActionResult> Original(Guid id, CancellationToken ct)
+    {
+        if (await scripts.OpenOriginalAsync(id, ct) is not { } f)
+            return NotFound();
+
+        // inline (not attachment) so the browser renders instead of downloading; SetHttpFileName emits
+        // an RFC 5987 filename* so Cyrillic script names survive. No download-name arg on File() — that
+        // would overwrite this header with attachment.
+        var cd = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("inline");
+        cd.SetHttpFileName(f.FileName);
+        Response.Headers.ContentDisposition = cd.ToString();
+        return File(f.Content, f.ContentType);
+    }
+
     [HttpPost]
     [Authorize(Policy = "Member")]
     [RequestSizeLimit(25 * 1024 * 1024)]

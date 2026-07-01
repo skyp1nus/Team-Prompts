@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, Eye, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Tags, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Tags, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,7 +13,6 @@ import {
 } from "@/api/endpoints/script-projects/script-projects";
 import { FileType, type ScriptDto, ScriptKind, type ScriptProjectListItemDto, SessionStatus } from "@/api/model";
 import { KeywordsDialog } from "@/components/scripts/keywords-dialog";
-import { ScriptViewerDialog } from "@/components/scripts/script-viewer-dialog";
 import { UploadDialog } from "@/components/scripts/upload-dialog";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -27,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { scriptFileUrl } from "@/lib/api/uploads";
 import { useAuth } from "@/lib/auth/auth-context";
 import { formatRelative } from "@/lib/format";
 import { invalidatePath } from "@/lib/query/invalidate";
@@ -476,12 +476,23 @@ function ScriptLeaf({
   const { activeScriptId, setActiveScriptId, setTagsDescriptionProjectId, batchScriptIds, toggleBatchScript } =
     useWorkspace();
   const delVariant = useDeleteApiScriptProjectsIdVariantsVariantId();
-  const [viewOpen, setViewOpen] = useState(false);
 
   const isVariant = script.kind === ScriptKind.Variant;
   const isPdf = script.fileType === FileType.Pdf;
   const busy = inProgress(script.variantStatus);
   const failed = script.variantStatus === SessionStatus.Failed;
+
+  // Open the real uploaded PDF in its own standalone, movable browser window (a popup, not a tab) so
+  // the native viewer shows the file's annotations. Same-site cookie authorises the GET. Re-using a
+  // per-script window name focuses the existing window instead of spawning duplicates.
+  const openOriginal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(
+      scriptFileUrl(script.id),
+      `pdf-${script.id}`,
+      "popup=yes,width=900,height=1000,resizable=yes,scrollbars=yes",
+    );
+  };
 
   const onDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -575,16 +586,15 @@ function ScriptLeaf({
         </div>
       </div>
 
-      {!busy && (
+      {/* Original PDFs carry their real markup (highlights, review notes) only in the source file —
+          open the real bytes in a standalone, movable window where the native viewer renders them. */}
+      {isPdf && !isVariant && (
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setViewOpen(true);
-          }}
+          onClick={openOriginal}
           className="flex size-[20px] shrink-0 items-center justify-center rounded text-faint opacity-0 transition-colors group-hover/leaf:opacity-100 hover:text-foreground"
-          title="View text"
+          title="Open original PDF (with annotations)"
         >
-          <Eye className="size-3.5" />
+          <ExternalLink className="size-3.5" />
         </button>
       )}
       {isVariant && !busy && isPrivileged && (
@@ -596,8 +606,6 @@ function ScriptLeaf({
           <X className="size-3" />
         </button>
       )}
-
-      <ScriptViewerDialog script={script} open={viewOpen} onOpenChange={setViewOpen} />
     </div>
   );
 }
