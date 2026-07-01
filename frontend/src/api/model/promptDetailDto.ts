@@ -20,4 +20,5 @@ export interface PromptDetailDto {
   kind: PromptKind;
   useKeywords: boolean;
   useSummarySource: boolean;
+  isConfigured?: boolean;
 }

@@ -223,12 +223,11 @@ function buildStore() {
     ]),
     prompt(
       "p5",
-      "Condense to вижимка",
+      "Summary",
       "titles",
       WS_GENERAL,
-      [
-        ["v1", null, "Mara A.", 9, "Initial draft", "Condense this video script into a tight ~150-word summary (вижимка) that keeps the key beats and the hook. Plain prose, ready to record.", true],
-      ],
+      // Seeded EMPTY (unconfigured) → the master Summary burns "not set up" until the team fills it in.
+      [["v1", null, "Mara A.", 9, "Seeded", "", true]],
       "Summary", // the workspace's (only/top) Summary prompt → auto-resolves as the master mind map
     ),
     prompt(
@@ -249,6 +248,28 @@ function buildStore() {
       WS_GENERAL,
       [["v1", null, "Mara A.", 3, "Initial draft", "Rewrite the script with high energy.", true]],
       "Summary", // a non-master Summary-KIND prompt → also chained to the Summary node on the canvas
+    ),
+    // The two workspace-static prompts — seeded EMPTY (unconfigured), live only on the Tags & Description
+    // mind map. They burn amber until the team writes their instructions.
+    prompt(
+      "p8",
+      "Tags",
+      "titles",
+      WS_GENERAL,
+      [["v1", null, "Mara A.", 2, "Seeded", "", true]],
+      "Tags",
+      false,
+      true,
+    ),
+    prompt(
+      "p9",
+      "Description",
+      "desc",
+      WS_GENERAL,
+      [["v1", null, "Mara A.", 2, "Seeded", "", true]],
+      "Description",
+      false,
+      true,
     ),
   ];
 
@@ -406,6 +427,7 @@ function prompt(
   vs: [string, string | null, string, number, string, string, boolean][],
   promptKind: PromptKind = "MainScripts",
   useSummarySource = false,
+  useKeywords = false,
 ): PromptRec {
   const versions = vs.map(([vid, parent, author, days, note, content, isMain]) =>
     version(id, `${id}${vid}`, parent ? `${id}${parent}` : null, author, days, note, content, isMain),
@@ -422,7 +444,7 @@ function prompt(
     createdAt: iso(17),
     updatedAt: iso(1),
     versions,
-    useKeywords: false,
+    useKeywords,
     useSummarySource,
   };
 }
@@ -459,6 +481,13 @@ function trayFor(scriptId: string): TrayItemDto[] {
   return out;
 }
 
+/** A prompt is "configured" once its Main version has non-empty instructions (the seeded Tags/Description
+ *  prompts start empty). */
+function promptConfigured(p: PromptRec): boolean {
+  const main = p.versions.find((v) => v.id === p.mainVersionId) ?? p.versions[p.versions.length - 1];
+  return (main?.content ?? "").trim().length > 0;
+}
+
 function listItem(p: PromptRec): PromptListItemDto {
   return {
     id: p.id,
@@ -471,6 +500,7 @@ function listItem(p: PromptRec): PromptListItemDto {
     kind: p.kind,
     useKeywords: p.useKeywords,
     useSummarySource: p.useSummarySource,
+    isConfigured: promptConfigured(p),
   };
 }
 
@@ -765,9 +795,13 @@ export function mockResponse(config: AxiosRequestConfig): Promise<unknown> | und
     const p = store.prompts.find((x) => x.id === mm![1]);
     if (p) {
       const vId = uid(`${p.id}v`);
-      p.versions.push(
-        version(p.id, vId, String(body.parentVersionId ?? p.mainVersionId), "Mara A.", 0, (body.note as string) ?? null, String(body.content ?? ""), false),
+      const v = version(
+        p.id, vId, String(body.parentVersionId ?? p.mainVersionId), "Mara A.", 0,
+        (body.note as string) ?? null, String(body.content ?? ""), false,
       );
+      p.versions.push(v);
+      // Return the created version (with its id) so callers can promote it right after — the real API does.
+      return reply(v, 200);
     }
     return reply({}, 200);
   }

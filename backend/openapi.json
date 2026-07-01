@@ -3149,13 +3149,18 @@
           },
           "useSummarySource": {
             "type": "boolean"
+          },
+          "isConfigured": {
+            "type": "boolean"
           }
         }
       },
       "PromptKind": {
         "enum": [
           "MainScripts",
-          "Summary"
+          "Summary",
+          "Tags",
+          "Description"
         ]
       },
       "PromptListItemDto": {
@@ -3207,6 +3212,9 @@
             "type": "boolean"
           },
           "useSummarySource": {
+            "type": "boolean"
+          },
+          "isConfigured": {
             "type": "boolean"
           }
         }

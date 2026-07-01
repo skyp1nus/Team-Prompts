@@ -1,5 +1,6 @@
 using FluentValidation;
 using TeamPrompts.Application.Dtos;
+using TeamPrompts.Domain.Enums;
 
 namespace TeamPrompts.Application.Validation;
 
@@ -61,6 +62,12 @@ public sealed class CreatePromptRequestValidator : AbstractValidator<CreatePromp
         RuleFor(x => x.WorkspaceId).NotEmpty();
         RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
         RuleFor(x => x.Content).NotEmpty();
+        // Summary, Tags and Description are workspace-static ("Unique"): exactly one of each is seeded per
+        // workspace and none can be added. Only MainScripts prompts are user-authorable here (a summary-tag
+        // is a flag on a MainScripts prompt, not a Summary-kind prompt).
+        RuleFor(x => x.Kind)
+            .Must(k => k is PromptKind.MainScripts)
+            .WithMessage("Summary, Tags and Description prompts are managed by the system and can't be created.");
     }
 }
 

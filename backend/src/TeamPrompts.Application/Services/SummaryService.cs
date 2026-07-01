@@ -71,12 +71,13 @@ public sealed class SummaryService(
                 .ToListAsync(ct))
             .ToDictionary(s => s.ProjectId);
 
-        // The master Summary is resolved automatically + STABLY — the workspace's OLDEST Summary-kind
-        // prompt (by CreatedAt, then Id). One per workspace, always active, and unaffected by reordering
-        // or creating newer Summary prompts. No manual flag.
+        // The master Summary is resolved automatically + STABLY — the workspace's OLDEST *configured*
+        // Summary-kind prompt (by CreatedAt, then Id). The prompt is seeded empty; until the team fills in
+        // its instructions it isn't a usable master, so a Summary never auto-generates against blank text.
         var workspaceIds = originals.Select(o => o.WorkspaceId).Distinct().ToList();
         var masterVersionByWorkspace = (await db.Prompts.AsNoTracking()
-                .Where(p => p.Kind == PromptKind.Summary && p.MainVersionId != null && workspaceIds.Contains(p.WorkspaceId))
+                .Where(p => p.Kind == PromptKind.Summary && workspaceIds.Contains(p.WorkspaceId)
+                    && p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""))
                 .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
                 .Select(p => new { p.WorkspaceId, MainVersionId = p.MainVersionId!.Value })
                 .ToListAsync(ct))
@@ -146,15 +147,17 @@ public sealed class SummaryService(
         if (project.OriginalScriptId is not { } originalId)
             throw new AppValidationException("This project has no source script to summarise.");
 
-        // Auto-resolve the master = the workspace's OLDEST Summary-kind prompt (stable across reorder).
+        // Auto-resolve the master = the workspace's OLDEST *configured* Summary-kind prompt (the seeded one
+        // is empty until the team fills it in — skip it while blank).
         var versionId = await db.Prompts.AsNoTracking()
-            .Where(p => p.WorkspaceId == project.WorkspaceId && p.Kind == PromptKind.Summary && p.MainVersionId != null)
+            .Where(p => p.WorkspaceId == project.WorkspaceId && p.Kind == PromptKind.Summary
+                && p.Versions.Any(v => v.Id == p.MainVersionId && v.Content != ""))
             .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
             .Select(p => p.MainVersionId)
             .FirstOrDefaultAsync(ct);
         if (versionId is not { } mid)
             throw new AppValidationException(
-                "This workspace has no Summary prompt. Create one in the Prompt Library first.");
+                "The workspace's Summary prompt isn't set up yet. Fill it in the Prompt Library first.");
 
         var settings = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var resolvedModel = !string.IsNullOrWhiteSpace(model)

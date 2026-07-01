@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using TeamPrompts.Application.Services;
 using TeamPrompts.Domain.Entities;
 using TeamPrompts.Infrastructure.Identity;
 
 namespace TeamPrompts.Infrastructure.Persistence;
 
-/// <summary>Applies migrations, seeds roles, the admin user, and the single AppSettings row.</summary>
+/// <summary>Applies migrations, seeds roles, the admin user, the single AppSettings row, and the
+/// per-workspace static Tags &amp; Description prompts.</summary>
 public static class DataSeeder
 {
     public static async Task SeedAsync(IServiceProvider sp, string adminEmail, string adminPassword, bool applyMigrations = true)
@@ -26,6 +28,7 @@ public static class DataSeeder
         }
 
         var userMgr = services.GetRequiredService<UserManager<AppUser>>();
+        var seedUserId = string.Empty; // attribution for system-seeded rows (empty is a valid, unresolved user)
         if (!string.IsNullOrWhiteSpace(adminEmail))
         {
             var admin = await userMgr.FindByEmailAsync(adminEmail);
@@ -50,6 +53,8 @@ public static class DataSeeder
                 await userMgr.AddToRoleAsync(admin, AppRoles.Admin);
             if (await userMgr.IsInRoleAsync(admin, AppRoles.Owner))
                 await userMgr.RemoveFromRoleAsync(admin, AppRoles.Owner);
+
+            seedUserId = admin.Id;
         }
 
         if (!await db.AppSettings.AnyAsync())
@@ -57,5 +62,11 @@ public static class DataSeeder
             db.AppSettings.Add(new AppSettings { Id = 1, UpdatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
         }
+
+        // Backfill the static Tags & Description prompts into every workspace (idempotent). New workspaces
+        // created at runtime are seeded by WorkspaceService.CreateAsync, so this only fills in the gaps.
+        var workspaceIds = await db.Workspaces.Select(w => w.Id).ToListAsync();
+        foreach (var workspaceId in workspaceIds)
+            await StaticPromptSeeder.EnsureAsync(db, workspaceId, seedUserId);
     }
 }

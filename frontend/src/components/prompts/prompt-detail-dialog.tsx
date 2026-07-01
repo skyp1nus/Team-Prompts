@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, GitBranch, Pencil, X } from "lucide-react";
+import { ArrowRight, Check, GitBranch, Pencil, TriangleAlert, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -148,6 +148,13 @@ function DetailPanel({
   // Which version the next run will use for this prompt: an explicit pin, else the current main.
   const activeVersionId = promptVersions[promptId]?.versionId ?? main?.id ?? null;
 
+  // The workspace-static "Unique" prompts (Summary master, Tags, Description) are seeded empty. Until the
+  // team writes their instructions they can't run on the mind map — surface a prominent setup step. Hide
+  // the Summary-tag settings for Tags/Description (they don't apply).
+  const isStaticKind = kind === PromptKind.Tags || kind === PromptKind.Description;
+  const needsSetup =
+    (isStaticKind || kind === PromptKind.Summary) && (main?.content ?? "").trim() === "";
+
   // Pick a version for the next generation. Choosing main clears the pin so the run keeps following
   // whatever the team promotes; choosing any other version pins it. Also selects the prompt for the run.
   const applyForGeneration = (v: PromptVersionDto, idx: number) => {
@@ -197,29 +204,36 @@ function DetailPanel({
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
-        {/* library flags — Summary tag + (Summary prompts only) master Summary */}
-        <section>
-          <SectionTitle>Summary settings</SectionTitle>
-          <div className="flex flex-wrap gap-1.5">
-            <MiniBtn
-              accent={useSummarySource}
-              disabled={updatePrompt.isPending}
-              onClick={() =>
-                setFlag(
-                  { useSummarySource: !useSummarySource },
-                  useSummarySource ? "Summary tag removed" : "Tagged — runs against the Summary",
-                )
-              }
-            >
-              {useSummarySource ? "✓ Summary tag" : "Tag: run against Summary"}
-            </MiniBtn>
-          </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-faint">
-            {kind === PromptKind.Summary
-              ? "This is a Summary prompt — the workspace's top one auto-runs on each script's first generation to build its mind map (no setup). The Summary tag routes a prompt's runs to that Summary script."
-              : "Tag this prompt to run it against the project's Summary script (the Summary branch) instead of the Original."}
-          </p>
-        </section>
+        {/* Tags & Description: seeded empty — prominent one-shot setup that writes + promotes the content. */}
+        {needsSetup && main && (
+          <StaticPromptSetup promptId={promptId} baseVersionId={main.id} kind={kind} />
+        )}
+
+        {/* library flags — Summary tag (hidden for the static Tags/Description prompts) */}
+        {!isStaticKind && (
+          <section>
+            <SectionTitle>Summary settings</SectionTitle>
+            <div className="flex flex-wrap gap-1.5">
+              <MiniBtn
+                accent={useSummarySource}
+                disabled={updatePrompt.isPending}
+                onClick={() =>
+                  setFlag(
+                    { useSummarySource: !useSummarySource },
+                    useSummarySource ? "Summary tag removed" : "Tagged — runs against the Summary",
+                  )
+                }
+              >
+                {useSummarySource ? "✓ Summary tag" : "Tag: run against Summary"}
+              </MiniBtn>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-faint">
+              {kind === PromptKind.Summary
+                ? "This is a Summary prompt — the workspace's top one auto-runs on each script's first generation to build its mind map (no setup). The Summary tag routes a prompt's runs to that Summary script."
+                : "Tag this prompt to run it against the project's Summary script (the Summary branch) instead of the Original."}
+            </p>
+          </section>
+        )}
 
         {/* main version */}
         {main && (
@@ -447,6 +461,74 @@ function BranchPanel({
         </form>
       </Form>
     </div>
+  );
+}
+
+/* ---------------- static prompt first-time setup ---------------- */
+/** One-shot "fill in the prompt" for the seeded, empty Tags/Description prompts: writes the content as a
+ *  new version AND promotes it to Main in a single click, so the prompt becomes configured (and stops
+ *  burning on the mind map) without the branch-then-promote two-step. */
+function StaticPromptSetup({
+  promptId,
+  baseVersionId,
+  kind,
+}: {
+  promptId: string;
+  baseVersionId: string;
+  kind: PromptKind;
+}) {
+  const qc = useQueryClient();
+  const branch = usePostApiPromptsIdVersions();
+  const promote = usePostApiPromptsIdVersionsVersionIdPromote();
+  const [text, setText] = useState("");
+  const pending = branch.isPending || promote.isPending;
+
+  const placeholder =
+    kind === PromptKind.Tags
+      ? "e.g. Generate 5 alternative sets of YouTube tags — one comma-separated set per line, ordered by importance."
+      : kind === PromptKind.Summary
+        ? "e.g. Condense this script into a tight ~150-word summary (вижимка) that keeps the key beats and the hook."
+        : "e.g. Write 5 alternative YouTube descriptions — one per line, with a hook, a summary and a soft CTA.";
+
+  const save = async () => {
+    const content = text.trim();
+    if (!content || pending) return;
+    try {
+      const v = await branch.mutateAsync({
+        id: promptId,
+        data: { parentVersionId: baseVersionId, content, note: "Initial setup" },
+      });
+      await promote.mutateAsync({ id: promptId, versionId: v.id });
+      await invalidatePath(qc, "/api/prompts");
+      toast.success("Prompt set up");
+    } catch {
+      toast.error("Couldn’t save the prompt");
+    }
+  };
+
+  return (
+    <section className="rounded-[12px] border-[1.5px] border-warn/50 bg-warn/[0.06] p-4">
+      <div className="flex items-center gap-2 text-warn">
+        <TriangleAlert className="size-4" />
+        <h3 className="text-[13px] font-semibold">Set up this prompt</h3>
+      </div>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+        It has no instructions yet, so it can’t run on the mind map. Write what it should generate — the
+        script and (when keywords are on) the project keywords are added automatically.
+      </p>
+      <Textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={placeholder}
+        className="mt-3 min-h-[140px] leading-relaxed"
+        aria-label="Prompt instructions"
+      />
+      <div className="mt-3 flex justify-end">
+        <Button onClick={save} disabled={pending || text.trim().length === 0}>
+          {pending ? "Saving…" : "Save & set as main"}
+        </Button>
+      </div>
+    </section>
   );
 }
 

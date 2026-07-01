@@ -37,6 +37,16 @@ public enum PromptKind
 {
     MainScripts = 0,
     Summary = 1,
+
+    /// <summary>The workspace's static "Tags" prompt. Exactly one is seeded per workspace, editable but
+    /// not user-creatable (like the master Summary). It runs against the project Original on the dedicated
+    /// "Tags &amp; Description" mind map to produce SEO tags. Appended last so existing int values never shift.</summary>
+    Tags = 2,
+
+    /// <summary>The workspace's static "Description" prompt. Exactly one is seeded per workspace, editable but
+    /// not user-creatable. It runs against the project Original on the "Tags &amp; Description" mind map to
+    /// produce the video description.</summary>
+    Description = 3,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

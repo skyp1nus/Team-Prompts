@@ -83,6 +83,11 @@ public sealed class WorkspaceService(
         };
         db.Workspaces.Add(ws);
         await db.SaveChangesAsync(ct);
+
+        // Every workspace owns the static Tags & Description prompts (like the master Summary is available
+        // everywhere) — seed them up front so the new space's "Tags & Description" mind map works immediately.
+        await StaticPromptSeeder.EnsureAsync(db, ws.Id, currentUser.UserId ?? string.Empty, ct);
+
         return (await GetAsync(ws.Id, ct))!;
     }
 
