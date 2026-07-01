@@ -66,9 +66,11 @@ export function PromptsPanel() {
   }, [prompts]);
   const masterSummaryId = masterSummary?.id ?? null;
 
-  // Self-heal a persisted selection: drop any prompt id that no longer exists.
+  // Self-heal a persisted selection: keep only ids that still exist AND are runnable. Summary-KIND
+  // prompts are mind-map builders (their output IS the Summary node) — never a manual run — so they're
+  // excluded here too, dropping any stale selection of one that would otherwise be a silent no-op.
   useEffect(() => {
-    if (prompts) prunePrompts(prompts.map((p) => p.id));
+    if (prompts) prunePrompts(prompts.filter((p) => p.kind !== PromptKind.Summary).map((p) => p.id));
   }, [prompts, prunePrompts]);
 
   // Client-side filter for display only — onDragEnd still indexes into the full `prompts` list, so
@@ -301,6 +303,10 @@ function PromptRow({
   onDelete: () => void;
 }) {
   const hasMain = !!prompt.mainVersionId;
+  // Summary-KIND prompts are mind-map builders, not runnable lanes — not selectable for a run (the master
+  // auto-runs as the mind map; any other Summary-kind prompt is represented by the Summary node too).
+  // Clicking one opens its detail instead of arming a run that the backend would silently skip.
+  const selectable = prompt.kind !== PromptKind.Summary;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: prompt.id,
   });
@@ -309,10 +315,11 @@ function PromptRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      onClick={onToggle}
+      onClick={selectable ? onToggle : onOpen}
+      title={selectable ? undefined : "Mind-map builder — represented by the Summary node, not a manual run"}
       className={cn(
         "group relative mb-[3px] flex cursor-pointer items-start gap-1.5 rounded-lg p-2.5 transition-colors hover:bg-accent",
-        selected && "bg-primary/[0.07]",
+        selectable && selected && "bg-primary/[0.07]",
         isDragging && "z-10 opacity-60",
       )}
     >
@@ -326,14 +333,20 @@ function PromptRow({
       >
         <GripVertical className="size-3.5" />
       </button>
-      <span
-        className={cn(
-          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
-          selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
-        )}
-      >
-        {selected && "✓"}
-      </span>
+      {selectable ? (
+        <span
+          className={cn(
+            "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-[1.5px] text-[11px] transition-colors",
+            selected ? "border-primary bg-primary text-primary-foreground" : "border-border-strong text-transparent",
+          )}
+        >
+          {selected && "✓"}
+        </span>
+      ) : (
+        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/12 text-violet-600 dark:text-violet-400">
+          <Network className="size-3.5" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium">{prompt.name}</span>

@@ -248,7 +248,7 @@ function buildStore() {
       "titles",
       WS_GENERAL,
       [["v1", null, "Mara A.", 3, "Initial draft", "Rewrite the script with high energy.", true]],
-      "Summary", // a non-master Summary-KIND prompt → also chained to the Summary node on the canvas
+      "Summary", // a non-master Summary-KIND prompt (builder) → represented by the Summary node, gets NO canvas lane
     ),
   ];
 
@@ -344,12 +344,12 @@ function buildStore() {
   ];
 
   const sessionsByScript: Record<string, SessionWithResultsDto[]> = {
-    // The Desk Setup project's Original — main lanes + one Summary-branch lane (a summary-tagged prompt).
+    // The Desk Setup project's Original — main lanes + one Summary-branch lane (a summary-TAGGED prompt).
+    // A Summary-KIND prompt (p7) is the mind-map builder: it's the Summary node itself, so it gets NO lane.
     prsc1: [
       session("prsc1", prompts[0], "anthropic/claude-3.7-sonnet", 5, [1], [1]),
       session("prsc1", prompts[1], "openai/gpt-5", 4, []),
       session("prsc1", prompts[5], "openai/gpt-5", 5, [], [], true), // p6 — tagged → Summary branch (done)
-      session("prsc1", prompts[6], "anthropic/claude-3.7-sonnet", 0, [], [], true, "Waiting"), // p7 — Summary KIND, parked Waiting
     ],
     sc1: [
       // Three runs of the same prompt+model → shows the horizontal "chain" layout (rope-linked runs).

@@ -91,16 +91,18 @@ export function CenterPanel() {
     return m;
   }, [promptList]);
 
-  // Every Summary-related prompt — a Summary KIND prompt OR one carrying the Summary tag — gets chained
-  // to the Summary node on the canvas (placed in its branch). The session marker (isSummarySource) covers
-  // tagged prompts that ran against the Summary script; this also catches Summary-kind prompts.
+  // Only summary-TAGGED prompts (UseSummarySource) form a Summary branch lane — they run AGAINST the
+  // Summary script. A Summary-KIND prompt is the mind-map BUILDER: its output IS the Summary node, so it
+  // never gets a lane of its own (the backend creates no session for it). The session marker
+  // (isSummarySource) still covers any tagged lane that already ran against the Summary script.
   const summaryPromptIds = useMemo(
-    () =>
-      new Set(
-        (promptList ?? [])
-          .filter((p) => p.kind === PromptKind.Summary || p.useSummarySource)
-          .map((p) => p.id),
-      ),
+    () => new Set((promptList ?? []).filter((p) => p.useSummarySource).map((p) => p.id)),
+    [promptList],
+  );
+  // Summary-KIND prompts are mind-map builders — never a manual run (the backend creates no session for
+  // them). Tracked so onGenerate can drop them from a request defensively, even from a stale selection.
+  const summaryKindIds = useMemo(
+    () => new Set((promptList ?? []).filter((p) => p.kind === PromptKind.Summary).map((p) => p.id)),
     [promptList],
   );
 
@@ -132,11 +134,19 @@ export function CenterPanel() {
 
   const onGenerate = async () => {
     if (!canGenerate) return;
+    // Summary-KIND prompts are mind-map builders, not runnable lanes — the backend skips them. Drop them
+    // from the request so a selection that's ONLY builders can't masquerade as a started run (it would
+    // yield zero sessions and a misleading success toast).
+    const runnablePromptIds = selectedPromptIds.filter((id) => !summaryKindIds.has(id));
+    if (runnablePromptIds.length === 0) {
+      toast.warning("Summary prompts build the mind map automatically — pick a regular or summary-tagged prompt to generate.");
+      return;
+    }
     // Remember this prompt+model selection so a newly added script can inherit it (#12).
     rememberRunSetup();
     const models = runModels.length > 0 ? runModels : [null];
     // Resolve each prompt's version now: a pinned version, else null = the prompt's current main.
-    const prompts = selectedPromptIds.map((promptId) => ({
+    const prompts = runnablePromptIds.map((promptId) => ({
       promptId,
       promptVersionId: promptVersions[promptId]?.versionId ?? null,
     }));
@@ -303,7 +313,6 @@ export function CenterPanel() {
               groups={groups}
               scriptId={activeScriptId}
               summary={summary}
-              projectId={projectId}
             />
           ) : (
             <CenterEmpty

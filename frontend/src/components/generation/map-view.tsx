@@ -42,7 +42,6 @@ import {
   usePostApiResultsResultIdFavorite,
   usePostApiResultsResultIdHighlight,
 } from "@/api/endpoints/results/results";
-import { usePostApiScriptProjectsIdSummaryRegenerate } from "@/api/endpoints/script-projects/script-projects";
 import {
   getGetApiScriptsIdCanvasQueryKey,
   getGetApiScriptsQueryKey,
@@ -223,13 +222,11 @@ export function MapView({
   groups,
   scriptId,
   summary,
-  projectId,
 }: {
   groups: Group[];
   scriptId: string;
   /** The project's Summary script (the mind-map anchor node), or null when none exists yet. */
   summary: ScriptDto | null;
-  projectId: string | null;
 }) {
   const qc = useQueryClient();
   const { mapOrientation, setMapOrientation, showHighlightsOnly, setShowHighlightsOnly } = useWorkspace();
@@ -755,7 +752,7 @@ export function MapView({
               }}
             >
               {n.kind === "summary" ? (
-                <SummaryNode summary={summary!} projectId={projectId} scriptId={scriptId} />
+                <SummaryNode summary={summary!} scriptId={scriptId} />
               ) : n.kind === "prompt" ? (
                 <PromptNode
                   group={n.group}
@@ -979,37 +976,19 @@ function ZoomBtn({
 
 /* ============================ SUMMARY NODE ============================ */
 /** The mind-map anchor block ON the canvas: the project's Summary script. The summary-tagged prompts
- *  branch off it (violet edges flow from here). Carries status, a вижимка preview, and Regenerate. */
+ *  branch off it (violet edges flow from here). Carries status + a вижимка preview. */
 function SummaryNode({
   summary,
-  projectId,
   scriptId,
 }: {
   summary: ScriptDto;
-  projectId: string | null;
   scriptId: string;
 }) {
-  const qc = useQueryClient();
-  const regen = usePostApiScriptProjectsIdSummaryRegenerate();
   const [expanded, setExpanded] = useState(false);
   const status = summary.variantStatus as SessionStatus | null | undefined;
   const pending = status === SessionStatus.Queued || status === SessionStatus.Streaming;
   const failed = status === SessionStatus.Failed;
   const text = (summary.extractedText ?? "").trim();
-
-  const regenerate = () => {
-    if (!projectId || regen.isPending) return;
-    regen.mutate(
-      { id: projectId },
-      {
-        onSuccess: () => {
-          invalidatePath(qc, "/api/script-projects", `/api/scripts/${scriptId}/sessions`);
-          toast.success("Regenerating the mind map…");
-        },
-        onError: () => toast.error("Couldn’t regenerate the Summary"),
-      },
-    );
-  };
 
   return (
     <div data-node data-summary={scriptId} className="relative z-[2] shrink-0" style={{ width: SUMMARY_W }}>
@@ -1060,22 +1039,12 @@ function SummaryNode({
         </div>
       </div>
 
-      {/* footer toolbar — model + Regenerate */}
+      {/* footer toolbar — model attribution (the mind map rebuilds automatically; no manual action) */}
       <div className="mt-2.5 flex items-center gap-1.5 rounded-[10px] border border-border bg-card p-1.5 shadow-sm">
         <span className="flex min-w-0 items-center gap-1.5 px-1 text-[11px] font-medium text-muted-foreground">
           <Network className="size-3.5 shrink-0 text-faint" />
           <span className="truncate">{summary.model ? modelLabel(summary.model) : "Summary"}</span>
         </span>
-        <span className="flex-1" />
-        <button
-          onClick={regenerate}
-          disabled={regen.isPending || pending || !projectId}
-          title="Regenerate the Summary from the master prompt"
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-[7px] bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white shadow-sm transition-colors hover:bg-violet-600/90 disabled:opacity-50"
-        >
-          {regen.isPending || pending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
-          Regenerate
-        </button>
       </div>
     </div>
   );
