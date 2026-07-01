@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronRight, ExternalLink, Folder, KeyRound, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Tags, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Folder, KeyRound, Link2, Loader2, MoreHorizontal, PanelLeftClose, Pencil, Search, Tags, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -30,6 +30,7 @@ import { scriptFileUrl } from "@/lib/api/uploads";
 import { useAuth } from "@/lib/auth/auth-context";
 import { formatRelative } from "@/lib/format";
 import { invalidatePath } from "@/lib/query/invalidate";
+import { projectShareUrl } from "@/lib/share";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
@@ -40,19 +41,26 @@ function inProgress(s: ScriptDto["variantStatus"]) {
 export function ScriptsPanel() {
   const [search, setSearch] = useState("");
   const { canGenerate } = useAuth();
-  const { activeWorkspaceId, expandedProjectIds, setScriptsPanelCollapsed } = useWorkspace();
+  const { activeWorkspaceId, expandedProjectIds, focusedProjectId, setFocusedProject, setScriptsPanelCollapsed } =
+    useWorkspace();
 
   const params = { workspaceId: activeWorkspaceId, ...(search.trim() ? { search: search.trim() } : {}) };
   const { data: projects, isLoading } = useGetApiScriptProjects(params, {
     query: { enabled: !!activeWorkspaceId },
   });
 
+  // Shared-link focus: collapse the rail to a single project and hide the rest.
+  const focusedProject = focusedProjectId ? projects?.find((p) => p.id === focusedProjectId) : undefined;
+  const visibleProjects = focusedProjectId
+    ? (projects ?? []).filter((p) => p.id === focusedProjectId)
+    : projects;
+
   return (
     <aside className="flex h-full flex-col border-r border-border bg-background">
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h2 className="eyebrow">Projects</h2>
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-faint">{projects?.length ?? 0}</span>
+          <span className="text-[11px] text-faint">{visibleProjects?.length ?? 0}</span>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -79,32 +87,55 @@ export function ScriptsPanel() {
         </div>
       </div>
 
-      <div className="px-3.5 pb-2.5">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-faint" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search projects…"
-            className="h-9 pr-7 pl-[30px] text-[12.5px]"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-faint transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Clear"
+      {focusedProjectId ? (
+        // Shared view: swap search + upload for a banner naming the one focused project + an exit.
+        <div className="px-3.5 pb-2.5">
+          <div className="flex items-center gap-2 rounded-[9px] border border-primary/30 bg-primary/[0.06] px-2.5 py-2">
+            <Link2 className="size-3.5 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold tracking-wide text-primary uppercase">Shared view</div>
+              <div className="truncate text-[12px] text-faint">{focusedProject?.name ?? "One project"}</div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-[12px]"
+              onClick={() => setFocusedProject(null)}
             >
-              <X className="size-3.5" />
-            </button>
-          )}
+              Show all
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="px-3.5 pb-2.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-faint" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search projects…"
+                className="h-9 pr-7 pl-[30px] text-[12.5px]"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-faint transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Clear"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
 
-      {/* Upload (create project) — Member+ only. Viewer browses existing projects read-only. */}
-      {canGenerate && (
-        <div className="px-3.5 pb-2">
-          <UploadDialog />
-        </div>
+          {/* Upload (create project) — Member+ only. Viewer browses existing projects read-only. */}
+          {canGenerate && (
+            <div className="px-3.5 pb-2">
+              <UploadDialog />
+            </div>
+          )}
+        </>
       )}
 
       <ScrollArea className="flex-1">
@@ -112,15 +143,25 @@ export function ScriptsPanel() {
           {isLoading &&
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="mb-1 h-[52px] w-full" />)}
 
-          {!isLoading && (projects?.length ?? 0) === 0 && (
-            <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
-              No projects yet.
-              <br />
-              Upload a PDF or TXT to start one.
-            </p>
-          )}
+          {!isLoading && (visibleProjects?.length ?? 0) === 0 &&
+            (focusedProjectId ? (
+              // Focused on a project that isn't in this space (e.g. deleted) — offer a way back.
+              <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
+                This shared project isn’t available.
+                <br />
+                <button onClick={() => setFocusedProject(null)} className="text-primary hover:underline">
+                  Show all projects
+                </button>
+              </p>
+            ) : (
+              <p className="px-4 py-8 text-center text-[12.5px] leading-relaxed text-faint">
+                No projects yet.
+                <br />
+                Upload a PDF or TXT to start one.
+              </p>
+            ))}
 
-          {projects?.map((p) => (
+          {visibleProjects?.map((p) => (
             <ProjectFolder key={p.id} project={p} expanded={expandedProjectIds.includes(p.id)} />
           ))}
         </div>
@@ -184,6 +225,16 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
         onError: () => toast.error("Delete failed"),
       },
     );
+  };
+
+  const onCopyLink = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(projectShareUrl(project.id));
+      toast.success("Share link copied");
+    } catch {
+      toast.error("Couldn’t copy link");
+    }
   };
 
   const cancelRename = () => setDraft(null);
@@ -256,45 +307,57 @@ function ProjectFolder({ project, expanded }: { project: ScriptProjectListItemDt
               <Folder className="size-[18px] shrink-0 text-primary/80" />
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
             </CollapsibleTrigger>
-            {/* Project actions — rename is Member+, delete is Owner/Admin. Viewer sees no menu at all. */}
-            {(canGenerate || isPrivileged) && (
-              <div className="flex shrink-0 items-center pr-1.5">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <button
-                        aria-label="Project actions"
-                        title="More"
-                        className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </button>
-                    }
-                  />
-                  <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
-                    {canGenerate && (
-                      <DropdownMenuItem
-                        onClick={() => setDraft(project.name)}
-                        className="whitespace-nowrap px-2 py-1.5"
-                      >
-                        <Pencil />
-                        Rename
-                      </DropdownMenuItem>
-                    )}
-                    {isPrivileged && (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={onDeleteProject}
-                        className="whitespace-nowrap px-2 py-1.5"
-                      >
-                        <X />
-                        Delete project
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
+            {/* Project actions — copy-share link is open to all; rename is Member+, delete is Owner/Admin. */}
+            <div className="flex shrink-0 items-center pr-1.5">
+              {/* Quick share: one click copies the project's deep link (opens the app focused here). */}
+              <button
+                type="button"
+                onClick={onCopyLink}
+                aria-label="Copy share link"
+                title="Copy share link"
+                className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+              >
+                <Link2 className="size-3.5" />
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      aria-label="Project actions"
+                      title="More"
+                      className="flex size-[22px] items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground data-[popup-open]:bg-card data-[popup-open]:text-foreground data-[popup-open]:opacity-100"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="center" className="w-auto min-w-[184px]">
+                  <DropdownMenuItem onClick={onCopyLink} className="whitespace-nowrap px-2 py-1.5">
+                    <Link2 />
+                    Copy share link
+                  </DropdownMenuItem>
+                  {canGenerate && (
+                    <DropdownMenuItem
+                      onClick={() => setDraft(project.name)}
+                      className="whitespace-nowrap px-2 py-1.5"
+                    >
+                      <Pencil />
+                      Rename
+                    </DropdownMenuItem>
+                  )}
+                  {isPrivileged && (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={onDeleteProject}
+                      className="whitespace-nowrap px-2 py-1.5"
+                    >
+                      <X />
+                      Delete project
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </>
         )}
       </div>

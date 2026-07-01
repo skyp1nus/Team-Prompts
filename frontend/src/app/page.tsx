@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { SharedProjectLoader } from "@/components/scripts/shared-project-loader";
 import { useAuth } from "@/lib/auth/auth-context";
 import { GenerationStreamProvider } from "@/lib/realtime/generation-stream";
 import { WorkspaceProvider } from "@/lib/workspace/workspace-context";
@@ -20,6 +21,7 @@ export default function Home() {
   return (
     <WorkspaceProvider>
       <GenerationStreamProvider>
+        <SharedProjectLoader />
         <AppShell />
       </GenerationStreamProvider>
     </WorkspaceProvider>
