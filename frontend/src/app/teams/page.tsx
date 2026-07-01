@@ -55,9 +55,12 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const ROLE_RANK: Record<string, number> = { Owner: 0, Admin: 1, Member: 2 };
+const ROLE_RANK: Record<string, number> = { Owner: 0, Admin: 1, PromptEditor: 2, Member: 3, Viewer: 4 };
 const topRole = (roles: string[]) =>
   [...roles].sort((a, b) => (ROLE_RANK[a] ?? 9) - (ROLE_RANK[b] ?? 9))[0] ?? "Member";
+/** Display labels — the stored role id "PromptEditor" reads as "Prompt Editor" in the UI. */
+const ROLE_LABEL: Record<string, string> = { PromptEditor: "Prompt Editor" };
+const roleLabel = (role: string) => ROLE_LABEL[role] ?? role;
 
 export default function TeamsPage() {
   const { isPrivileged } = useAuth();
@@ -118,7 +121,9 @@ export default function TeamsPage() {
           <p className="text-xs text-faint">
             Roles — <b className="text-muted-foreground">Owner</b> top control, exactly one ·{" "}
             <b className="text-muted-foreground">Admin</b> manages users, key &amp; models ·{" "}
-            <b className="text-muted-foreground">Member</b> uses prompts &amp; generates.
+            <b className="text-muted-foreground">Prompt Editor</b> edits prompts &amp; picks the model ·{" "}
+            <b className="text-muted-foreground">Member</b> uploads &amp; generates (no prompt editing) ·{" "}
+            <b className="text-muted-foreground">Viewer</b> views, copies &amp; highlights only.
           </p>
         </>
       )}
@@ -147,11 +152,11 @@ function UserRow({ user }: { user: UserDto }) {
       </TableCell>
       <TableCell>
         <Badge
-          variant={role === "Member" ? "secondary" : "default"}
+          variant={role === "Member" || role === "Viewer" ? "secondary" : "default"}
           className={cn("gap-1", role === "Owner" && "bg-primary text-primary-foreground")}
         >
           {role === "Owner" && <ShieldCheck className="size-3" />}
-          {role}
+          {roleLabel(role)}
         </Badge>
       </TableCell>
     </TableRow>
@@ -159,7 +164,7 @@ function UserRow({ user }: { user: UserDto }) {
 }
 
 /* ---------------- create user (Owner is a singleton) ---------------- */
-const USER_ROLES = ["Owner", "Admin", "Member"] as const;
+const USER_ROLES = ["Owner", "Admin", "PromptEditor", "Member", "Viewer"] as const;
 const createUserSchema = z.object({
   displayName: z.string().trim().min(1, "Display name is required").max(200),
   email: z.string().email("Enter a valid email"),
@@ -177,7 +182,9 @@ function CreateUserSheet({ ownerExists }: { ownerExists: boolean }) {
   const form = useForm<CreateUserValues>({ resolver: zodResolver(createUserSchema), defaultValues: EMPTY });
 
   // Owner can only be created when none exists yet.
-  const roleOptions = ownerExists ? (["Admin", "Member"] as const) : USER_ROLES;
+  const roleOptions = ownerExists
+    ? (["Admin", "PromptEditor", "Member", "Viewer"] as const)
+    : USER_ROLES;
 
   const onSubmit = (v: CreateUserValues) =>
     create.mutate(
@@ -267,7 +274,7 @@ function CreateUserSheet({ ownerExists }: { ownerExists: boolean }) {
                         <SelectContent>
                           {roleOptions.map((r) => (
                             <SelectItem key={r} value={r}>
-                              {r}
+                              {roleLabel(r)}
                             </SelectItem>
                           ))}
                         </SelectContent>

@@ -15,14 +15,15 @@ public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
 
 public sealed class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
-    private static readonly string[] Roles = ["Owner", "Admin", "Member"];
+    private static readonly string[] Roles = ["Owner", "Admin", "PromptEditor", "Member", "Viewer"];
 
     public CreateUserRequestValidator()
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
         RuleFor(x => x.Password).NotEmpty().MinimumLength(6);
         RuleFor(x => x.DisplayName).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Role).Must(r => Roles.Contains(r)).WithMessage("Role must be Owner, Admin or Member.");
+        RuleFor(x => x.Role).Must(r => Roles.Contains(r))
+            .WithMessage("Role must be Owner, Admin, PromptEditor, Member or Viewer.");
     }
 }
 

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkspaceDialog } from "@/components/workspace/workspace-dialog";
+import { useAuth } from "@/lib/auth/auth-context";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { cn } from "@/lib/utils";
 import { GENERAL_WORKSPACE_ID, useWorkspace } from "@/lib/workspace/workspace-context";
@@ -50,6 +51,8 @@ type DialogState = { mode: "create" } | { mode: "edit"; workspace: WorkspaceDto 
 
 export function WorkspaceDock() {
   const qc = useQueryClient();
+  // Only Owner/Admin manage spaces (create/edit/delete); everyone can switch between them.
+  const { isPrivileged } = useAuth();
   const { activeWorkspaceId, selectWorkspace, dockCollapsed, toggleDockCollapsed } = useWorkspace();
   const { data: workspaces, isLoading } = useGetApiWorkspaces();
   const del = useDeleteApiWorkspacesId();
@@ -121,6 +124,7 @@ export function WorkspaceDock() {
             key={ws.id}
             ws={ws}
             active={ws.id === activeWorkspaceId}
+            canManage={isPrivileged}
             onSelect={() => ws.id !== activeWorkspaceId && selectWorkspace(ws.id)}
             onEdit={() => setDialog({ mode: "edit", workspace: ws })}
             onDelete={() => onDelete(ws)}
@@ -136,21 +140,24 @@ export function WorkspaceDock() {
             key={ws.id}
             ws={ws}
             active={ws.id === activeWorkspaceId}
+            canManage={isPrivileged}
             onSelect={() => ws.id !== activeWorkspaceId && selectWorkspace(ws.id)}
             onEdit={() => setDialog({ mode: "edit", workspace: ws })}
             onDelete={() => onDelete(ws)}
           />
         ))}
 
-        {/* add a new space */}
-        <button
-          onClick={() => setDialog({ mode: "create" })}
-          className="mt-0.5 flex size-10 items-center justify-center rounded-[13px] border border-dashed border-border-strong text-faint transition-colors hover:border-primary hover:bg-primary/[0.06] hover:text-primary"
-          title="New space"
-          aria-label="New space"
-        >
-          <Plus className="size-[18px]" />
-        </button>
+        {/* add a new space — Owner/Admin only */}
+        {isPrivileged && (
+          <button
+            onClick={() => setDialog({ mode: "create" })}
+            className="mt-0.5 flex size-10 items-center justify-center rounded-[13px] border border-dashed border-border-strong text-faint transition-colors hover:border-primary hover:bg-primary/[0.06] hover:text-primary"
+            title="New space"
+            aria-label="New space"
+          >
+            <Plus className="size-[18px]" />
+          </button>
+        )}
 
         <div className="flex-1" />
 
@@ -176,12 +183,15 @@ export function WorkspaceDock() {
 function DockItem({
   ws,
   active,
+  canManage,
   onSelect,
   onEdit,
   onDelete,
 }: {
   ws: WorkspaceDto;
   active: boolean;
+  /** Owner/Admin — may edit/delete the space via the context/dropdown menus. */
+  canManage: boolean;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -198,6 +208,13 @@ function DockItem({
     <span className="uppercase">{label.slice(0, 2)}</span>
   );
 
+  const avatarButtonClass = cn(
+    "flex size-10 items-center justify-center overflow-hidden rounded-[13px] bg-accent text-[13px] font-bold text-muted-foreground transition-all duration-150 hover:scale-[1.06] hover:rounded-[11px]",
+    active
+      ? "rounded-[11px] ring-2 ring-primary ring-offset-2 ring-offset-background"
+      : "opacity-90 hover:opacity-100",
+  );
+
   return (
     <div className="group/item relative flex w-full justify-center">
       {/* Discord-style left indicator pill: tall when active, a nub on hover. */}
@@ -208,6 +225,12 @@ function DockItem({
         )}
       />
 
+      {/* Non-managers get a plain, menu-less switch button. */}
+      {!canManage ? (
+        <button onClick={onSelect} title={ws.name} aria-label={ws.name} aria-pressed={active} className={avatarButtonClass}>
+          {avatar}
+        </button>
+      ) : (
       <div className="relative">
         {/* Right-click selects nothing; it opens the same actions (Mac-dock feel). */}
         <ContextMenu>
@@ -273,6 +296,7 @@ function DockItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      )}
     </div>
   );
 }

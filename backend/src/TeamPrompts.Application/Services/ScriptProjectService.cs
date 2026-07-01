@@ -290,8 +290,10 @@ public sealed class ScriptProjectService(
         }
 
         var settings = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct);
-        var model = !string.IsNullOrWhiteSpace(req.Model)
-            ? req.Model!.Trim()
+        // Only model-choosers may pin a model; a Member falls back to the team default (never stuck).
+        var requestedModel = currentUser.CanChooseModel ? req.Model : null;
+        var model = !string.IsNullOrWhiteSpace(requestedModel)
+            ? requestedModel!.Trim()
             : settings?.DefaultModel ?? GenerationDefaults.FallbackModel;
         var userId = currentUser.UserId ?? string.Empty;
         var name = string.IsNullOrWhiteSpace(req.Name) ? prompt.Name : req.Name!.Trim();

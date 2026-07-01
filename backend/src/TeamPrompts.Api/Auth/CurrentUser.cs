@@ -12,4 +12,7 @@ public sealed class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
     public string? Email => Principal?.FindFirstValue(ClaimTypes.Email) ?? Principal?.Identity?.Name;
     public bool IsAuthenticated => Principal?.Identity?.IsAuthenticated ?? false;
     public bool IsAdmin => Principal?.IsInRole(AppRoles.Admin) ?? false;
+
+    // Owner/Admin/PromptEditor may pick the generation model; Member/Viewer fall back to the server default.
+    public bool CanChooseModel => AppRoles.PromptEditors.Any(r => Principal?.IsInRole(r) ?? false);
 }

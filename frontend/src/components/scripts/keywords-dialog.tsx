@@ -36,12 +36,15 @@ export function KeywordsDialog({
   projectId,
   projectName,
   keywords,
+  canEdit = true,
   open,
   onOpenChange,
 }: {
   projectId: string;
   projectName: string;
   keywords: ScriptDto | null;
+  /** Member+ may edit; Viewer opens it read-only. */
+  canEdit?: boolean;
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
@@ -69,6 +72,7 @@ export function KeywordsDialog({
             projectId={projectId}
             initial={keywords?.extractedText ?? ""}
             initialVersion={keywords?.version}
+            canEdit={canEdit}
             onClose={() => onOpenChange(false)}
           />
         )}
@@ -81,12 +85,15 @@ function KeywordsEditor({
   projectId,
   initial,
   initialVersion,
+  canEdit,
   onClose,
 }: {
   projectId: string;
   initial: string;
   /** The keyword Script's concurrency version when this editor opened; undefined for a not-yet-created list. */
   initialVersion?: number;
+  /** When false, the list is shown read-only (no editing, no Save). */
+  canEdit: boolean;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -129,23 +136,26 @@ function KeywordsEditor({
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          autoFocus
+          autoFocus={canEdit}
+          readOnly={!canEdit}
           placeholder="One keyword per line…"
-          className="max-h-[340px] min-h-[180px] resize-none text-[13px] leading-relaxed"
+          className="max-h-[340px] min-h-[180px] resize-none text-[13px] leading-relaxed read-only:opacity-80"
         />
         <p className="mt-2 flex items-center justify-between text-[11px] leading-relaxed text-faint">
-          <span>One keyword per line. Blank lines are ignored.</span>
+          <span>{canEdit ? "One keyword per line. Blank lines are ignored." : "Read-only"}</span>
           <span className="shrink-0 tabular-nums">{count}</span>
         </p>
       </div>
 
       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-background px-6 py-3.5">
         <Button type="button" variant="ghost" onClick={onClose}>
-          Cancel
+          {canEdit ? "Cancel" : "Close"}
         </Button>
-        <Button type="button" onClick={onSave} disabled={save.isPending || !dirty}>
-          {save.isPending ? "Saving…" : "Save keywords"}
-        </Button>
+        {canEdit && (
+          <Button type="button" onClick={onSave} disabled={save.isPending || !dirty}>
+            {save.isPending ? "Saving…" : "Save keywords"}
+          </Button>
+        )}
       </div>
     </>
   );

@@ -9,6 +9,10 @@ public interface ICurrentUser
     string? Email { get; }
     bool IsAuthenticated { get; }
     bool IsAdmin { get; }
+
+    /// <summary>True only for Owner/Admin/PromptEditor. When false (Member), a client-supplied model is
+    /// ignored and the server resolves the default — so a Member can never get stuck on an empty pick.</summary>
+    bool CanChooseModel { get; }
 }
 
 /// <summary>Symmetric protect/unprotect for secrets at rest (Data Protection in Infrastructure).</summary>

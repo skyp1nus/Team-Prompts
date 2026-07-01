@@ -39,12 +39,16 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function PromptsPanel() {
   const qc = useQueryClient();
+  // Members see prompt names here (to pick for a run) but not content: no create/open/edit/reorder.
+  // Only Owner/Admin may delete. (Viewers never reach this panel — app-shell hides it.)
+  const { canEditPrompts, isPrivileged } = useAuth();
   const {
     activeWorkspaceId,
     selectedPromptIds,
@@ -152,7 +156,7 @@ export function PromptsPanel() {
       <div className="flex shrink-0 items-center justify-between px-4 pt-4 pb-3">
         <h2 className="eyebrow">Prompt Library</h2>
         <div className="flex items-center gap-1.5">
-          <CreatePromptDialog />
+          {canEditPrompts && <CreatePromptDialog />}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -202,15 +206,27 @@ export function PromptsPanel() {
 
           {/* the workspace's single master Summary — pinned + framed (only when not filtered out) */}
           {!isLoading && masterSummaryShown && masterSummary && (
-            <MasterSummaryRow prompt={masterSummary} onOpen={() => setOpenPromptId(masterSummary.id)} />
+            <MasterSummaryRow
+              prompt={masterSummary}
+              canEdit={canEditPrompts}
+              onOpen={() => setOpenPromptId(masterSummary.id)}
+            />
           )}
 
           {/* the two workspace-static prompts — configured here; burn amber until they have content */}
           {!isLoading && tagsShown && tagsPrompt && (
-            <StaticPromptRow prompt={tagsPrompt} onOpen={() => setOpenPromptId(tagsPrompt.id)} />
+            <StaticPromptRow
+              prompt={tagsPrompt}
+              canEdit={canEditPrompts}
+              onOpen={() => setOpenPromptId(tagsPrompt.id)}
+            />
           )}
           {!isLoading && descriptionShown && descriptionPrompt && (
-            <StaticPromptRow prompt={descriptionPrompt} onOpen={() => setOpenPromptId(descriptionPrompt.id)} />
+            <StaticPromptRow
+              prompt={descriptionPrompt}
+              canEdit={canEditPrompts}
+              onOpen={() => setOpenPromptId(descriptionPrompt.id)}
+            />
           )}
 
           {!isLoading && !sortableShown && !anyStaticShown && (
@@ -229,6 +245,8 @@ export function PromptsPanel() {
                     prompt={p}
                     selected={selectedPromptIds.includes(p.id)}
                     pinnedVersion={promptVersions[p.id]?.number ?? null}
+                    canEdit={canEditPrompts}
+                    canDelete={isPrivileged}
                     onToggle={() => togglePrompt(p.id)}
                     onOpen={() => setOpenPromptId(p.id)}
                     onDelete={() => onDelete(p.id, p.name)}
@@ -252,21 +270,32 @@ export function PromptsPanel() {
 /** The workspace's single master Summary prompt — pinned at the top of the library with a frame so it
  *  reads as THE mind-map source. Auto-resolved (oldest Summary); not selectable for a run (it auto-runs
  *  as the mind map); not draggable. */
-function MasterSummaryRow({ prompt, onOpen }: { prompt: PromptListItemDto; onOpen: () => void }) {
+function MasterSummaryRow({
+  prompt,
+  canEdit,
+  onOpen,
+}: {
+  prompt: PromptListItemDto;
+  /** Owner/Admin/PromptEditor — may open the content/versions dialog to set it up. */
+  canEdit: boolean;
+  onOpen: () => void;
+}) {
   const unconfigured = prompt.isConfigured === false;
   return (
     <div
-      onClick={onOpen}
+      onClick={canEdit ? onOpen : undefined}
       title={
         unconfigured
           ? "Not set up yet — click to write the Summary prompt"
           : "The mind-map source — auto-runs on each script's first generation"
       }
       className={cn(
-        "group relative mb-2 flex cursor-pointer items-start gap-2 rounded-lg border-[1.5px] p-2.5 transition-colors",
+        "group relative mb-2 flex items-start gap-2 rounded-lg border-[1.5px] p-2.5 transition-colors",
         unconfigured
-          ? "border-warn/60 bg-warn/[0.07] hover:bg-warn/[0.12]"
-          : "border-violet-400/70 bg-violet-500/[0.05] hover:bg-violet-500/[0.09]",
+          ? "border-warn/60 bg-warn/[0.07]"
+          : "border-violet-400/70 bg-violet-500/[0.05]",
+        canEdit && "cursor-pointer",
+        canEdit && (unconfigured ? "hover:bg-warn/[0.12]" : "hover:bg-violet-500/[0.09]"),
       )}
     >
       <div
@@ -296,39 +325,44 @@ function MasterSummaryRow({ prompt, onOpen }: { prompt: PromptListItemDto; onOpe
           )}
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
-        title="History & versions"
-      >
-        <SlidersHorizontal className="size-3.5" />
-      </button>
+      {canEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+          title="History & versions"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }
 
 /** A workspace-static prompt (Tags / Description) pinned at the top of the library. Configured here
  *  (its content is seeded empty); run only from the Tags & Description mind map. Burns amber with a
- *  warning while it has no instructions yet, so the team knows to set it up. Not selectable, not draggable. */
-function StaticPromptRow({ prompt, onOpen }: { prompt: PromptListItemDto; onOpen: () => void }) {
+ *  warning while it has no instructions yet, so the team knows to set it up. Not selectable, not draggable.
+ *  Non-deletable — only editable (open to configure) by Owner/Admin/PromptEditor. */
+function StaticPromptRow({ prompt, canEdit, onOpen }: { prompt: PromptListItemDto; canEdit: boolean; onOpen: () => void }) {
   const unconfigured = prompt.isConfigured === false;
   const label = prompt.kind === PromptKind.Tags ? "TAGS" : "DESCRIPTION";
   return (
     <div
-      onClick={onOpen}
+      onClick={canEdit ? onOpen : undefined}
       title={
         unconfigured
           ? "Not set up yet — click to write this prompt"
           : "Tags & Description mind map prompt — click to edit"
       }
       className={cn(
-        "group relative mb-2 flex cursor-pointer items-start gap-2 rounded-lg border-[1.5px] p-2.5 transition-colors",
+        "group relative mb-2 flex items-start gap-2 rounded-lg border-[1.5px] p-2.5 transition-colors",
         unconfigured
-          ? "border-warn/60 bg-warn/[0.07] hover:bg-warn/[0.12]"
-          : "border-primary/25 bg-primary/[0.04] hover:bg-primary/[0.08]",
+          ? "border-warn/60 bg-warn/[0.07]"
+          : "border-primary/25 bg-primary/[0.04]",
+        canEdit && "cursor-pointer",
+        canEdit && (unconfigured ? "hover:bg-warn/[0.12]" : "hover:bg-primary/[0.08]"),
       )}
     >
       <div
@@ -358,16 +392,18 @@ function StaticPromptRow({ prompt, onOpen }: { prompt: PromptListItemDto; onOpen
           )}
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
-        title="Configure"
-      >
-        <SlidersHorizontal className="size-3.5" />
-      </button>
+      {canEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+          title="Configure"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }
@@ -376,6 +412,8 @@ function PromptRow({
   prompt,
   selected,
   pinnedVersion,
+  canEdit,
+  canDelete,
   onToggle,
   onOpen,
   onDelete,
@@ -384,6 +422,10 @@ function PromptRow({
   selected: boolean;
   /** "vN" pinned for the next run, or null to follow Main. */
   pinnedVersion: number | null;
+  /** Owner/Admin/PromptEditor — may reorder + open content/versions. */
+  canEdit: boolean;
+  /** Owner/Admin — may delete. */
+  canDelete: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -409,16 +451,19 @@ function PromptRow({
         isDragging && "z-10 opacity-60",
       )}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-foreground"
-        aria-label="Drag to reorder"
-        title="Drag to reorder"
-      >
-        <GripVertical className="size-3.5" />
-      </button>
+      {/* Reorder handle — PromptEditor+ only. Members select but can't reorder the shared library. */}
+      {canEdit && (
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:text-foreground"
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      )}
       {selectable ? (
         <span
           className={cn(
@@ -489,26 +534,30 @@ function PromptRow({
           </span>
         </div>
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
-        title="History & versions"
-      >
-        <SlidersHorizontal className="size-3.5" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
-        title="Delete prompt"
-      >
-        <X className="size-3.5" />
-      </button>
+      {canEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-card hover:text-foreground hover:shadow-sm"
+          title="History & versions"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      )}
+      {canDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-faint opacity-0 transition-colors group-hover:opacity-100 hover:bg-card hover:text-foreground"
+          title="Delete prompt"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
     </div>
   );
 }

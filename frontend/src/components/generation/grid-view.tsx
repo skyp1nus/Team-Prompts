@@ -9,6 +9,7 @@ import { ModelBadge } from "@/components/generation/model-badge";
 import { ResultCard } from "@/components/generation/result-card";
 import { VersionBadge } from "@/components/generation/version-badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth/auth-context";
 import { invalidatePath } from "@/lib/query/invalidate";
 import { useGenerationStream } from "@/lib/realtime/generation-stream";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ function SessionSection({
   const { live } = useGenerationStream();
   const qc = useQueryClient();
   const { promptVersions } = useWorkspace();
+  const { canGenerate } = useAuth();
   const regen = usePostApiGenerationSessionsSessionIdRegenerate();
   const ls = live[item.session.id];
   const status = (ls?.status ?? item.session.status) as string;
@@ -101,16 +103,18 @@ function SessionSection({
                   : "Generation failed."
                 : "No results."}
             </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={retry}
-              disabled={regen.isPending}
-              className="h-7 gap-1.5 px-2.5 text-[11.5px]"
-            >
-              <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
-              Try again
-            </Button>
+            {canGenerate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={retry}
+                disabled={regen.isPending}
+                className="h-7 gap-1.5 px-2.5 text-[11.5px]"
+              >
+                <RotateCw className={cn("size-3", regen.isPending && "animate-spin")} />
+                Try again
+              </Button>
+            )}
           </div>
         )}
       </div>

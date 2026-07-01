@@ -30,7 +30,18 @@ import { initials } from "@/lib/format";
 import { useWorkspace } from "@/lib/workspace/workspace-context";
 
 export function AppShell() {
-  const { user, isOwner, isAdmin, isPrivileged } = useAuth();
+  const { user, isOwner, isAdmin, isPromptEditor, isMember, isPrivileged, canGenerate } = useAuth();
+  // Viewer is read-only: no Prompts rail (not even names) and no upload drop-zone.
+  const showPrompts = canGenerate;
+  const roleLabel = isOwner
+    ? "Owner"
+    : isAdmin
+      ? "Admin"
+      : isPromptEditor
+        ? "Prompt Editor"
+        : isMember
+          ? "Member"
+          : "Viewer";
   const router = useRouter();
   const qc = useQueryClient();
   const logout = usePostApiAuthLogout();
@@ -122,7 +133,7 @@ export function AppShell() {
             </Avatar>
             <span className="flex flex-col text-left leading-tight">
               <span className="text-[12.5px] font-medium">{user?.displayName}</span>
-              <span className="text-[10.5px] text-faint">{isOwner ? "Owner" : isAdmin ? "Admin" : "Member"}</span>
+              <span className="text-[10.5px] text-faint">{roleLabel}</span>
             </span>
             <ChevronDown className="size-3 text-faint" />
           </DropdownMenuTrigger>
@@ -191,27 +202,30 @@ export function AppShell() {
           <ResizablePanel id="center" minSize={400}>
             <CenterPanel />
           </ResizablePanel>
-          {!promptsPanelCollapsed && <ResizableHandle />}
-          <ResizablePanel
-            id="prompts"
-            collapsible
-            collapsedSize={0}
-            panelRef={promptsRef}
-            onResize={(size) => setPromptsPanelCollapsed(size.inPixels < 1)}
-            defaultSize={304}
-            minSize={240}
-            maxSize={420}
-          >
-            <PromptsPanel />
-          </ResizablePanel>
+          {showPrompts && !promptsPanelCollapsed && <ResizableHandle />}
+          {showPrompts && (
+            <ResizablePanel
+              id="prompts"
+              collapsible
+              collapsedSize={0}
+              panelRef={promptsRef}
+              onResize={(size) => setPromptsPanelCollapsed(size.inPixels < 1)}
+              defaultSize={304}
+              minSize={240}
+              maxSize={420}
+            >
+              <PromptsPanel />
+            </ResizablePanel>
+          )}
         </ResizablePanelGroup>
 
-        {promptsPanelCollapsed && (
+        {showPrompts && promptsPanelCollapsed && (
           <CollapsedRail side="right" label="Prompts" onExpand={() => setPromptsPanelCollapsed(false)} />
         )}
       </div>
 
-      <GlobalDropZone />
+      {/* Upload drop-zone only for those who can upload (Member+). Viewer can't create scripts. */}
+      {canGenerate && <GlobalDropZone />}
     </div>
   );
 }

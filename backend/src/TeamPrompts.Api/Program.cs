@@ -67,8 +67,16 @@ builder.Services.ConfigureApplicationCookie(o =>
 });
 
 builder.Services.AddAuthorization(o =>
-    // Owner is a superset of Admin: both pass the privileged "Admin" policy.
-    o.AddPolicy("Admin", p => p.RequireRole(AppRoles.Privileged)));
+{
+    // Tiered policies, each a superset of the next. Owner ⊇ Admin ⊇ PromptEditor ⊇ Member; Viewer holds
+    // no policy (only the bare [Authorize] view/copy/favorite/highlight surface).
+    // "Admin"        — privileged management: settings, users, workspaces, every delete.
+    o.AddPolicy("Admin", p => p.RequireRole(AppRoles.Privileged));
+    // "PromptEditor" — view/edit prompt content + choose the generation model.
+    o.AddPolicy("PromptEditor", p => p.RequireRole(AppRoles.PromptEditors));
+    // "Member"       — upload, generate, edit scripts, see prompt names (everyone except Viewer).
+    o.AddPolicy("Member", p => p.RequireRole(AppRoles.Members));
+});
 
 // ---- App-specific services ----
 builder.Services.AddHttpContextAccessor();
